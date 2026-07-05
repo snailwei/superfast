@@ -1,0 +1,155 @@
+//! FAST Definitions — template registry.
+
+use std::cell::Cell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::errors::{Error, Result};
+use crate::instruction::Instruction;
+use crate::template::Template;
+use crate::types::{Dictionary, Operator, Presence, TypeRef};
+use crate::value::ValueType;
+
+/// Stores template definitions and global processing context.
+#[derive(Clone)]
+pub struct Definitions {
+    pub(crate) templates: Vec<Rc<Template>>,
+    pub(crate) templates_by_id: HashMap<u32, Rc<Template>>,
+    pub(crate) templates_by_name: HashMap<String, Rc<Template>>,
+    pub(crate) template_id_instruction: Rc<Instruction>,
+}
+
+impl Definitions {
+    pub(crate) fn new_from_templates(ts: Vec<Template>) -> Result<Self> {
+        let mut templates = Vec::with_capacity(ts.len());
+        let mut templates_by_id = HashMap::with_capacity(ts.len());
+        let mut templates_by_name = HashMap::with_capacity(ts.len());
+        for t in ts {
+            let t = Rc::new(t);
+            if t.id != 0 {
+                templates_by_id.insert(t.id, t.clone());
+            }
+            if !t.name.is_empty() {
+                templates_by_name.insert(t.name.clone(), t.clone());
+            }
+            templates.push(t);
+        }
+
+        let template_id_instruction = Rc::new(Instruction {
+            id: 0,
+            name: "__template_id__".to_string(),
+            value_type: ValueType::UInt32,
+            presence: Presence::Mandatory,
+            nullable: false,
+            operator: Operator::Copy,
+            initial_value: None,
+            instructions: Vec::new(),
+            dictionary: Dictionary::Global,
+            key: Rc::from("__template_id__"),
+            type_ref: TypeRef::Any,
+            has_pmap: Cell::new(false),
+            was_present: Cell::new(None),
+        });
+
+        let definitions = Self {
+            templates,
+            templates_by_id,
+            templates_by_name,
+            template_id_instruction,
+        };
+        definitions.finalize()?;
+        Ok(definitions)
+    }
+
+    pub fn new(text: &str) -> Result<Self> {
+        let doc = roxmltree::Document::parse(text)?;
+        let root = doc
+            .root()
+            .first_child()
+            .ok_or_else(|| Error::Static("no root element found".to_string()))?;
+        if root.tag_name().name() != "templates" {
+            return Err(Error::Static("<templates/> node not found".to_string()));
+        }
+        let mut templates = Vec::new();
+        for child in root.children() {
+            if child.is_element() {
+                templates.push(Template::from_node(child)?);
+            }
+        }
+        Self::new_from_templates(templates)
+    }
+
+    fn finalize(&self) -> Result<()> {
+        for tpl in &self.templates {
+            let need_pmap = self.require_presence_map_bit(&tpl.instructions)?;
+            tpl.require_pmap.set(Some(need_pmap));
+        }
+        Ok(())
+    }
+
+    fn require_presence_map_bit(&self, instructions: &[Instruction]) -> Result<bool> {
+        let mut has_pmap_bit = false;
+        for i in instructions {
+            if self.has_presence_map_bit(i)? {
+                has_pmap_bit = true;
+            }
+        }
+        Ok(has_pmap_bit)
+    }
+
+    fn set_has_pmap(&self, instr: &Instruction) -> Result<()> {
+        let instructions: &[Instruction] = match instr.value_type {
+            ValueType::Group | ValueType::TemplateReference | ValueType::Decimal => {
+                &instr.instructions
+            }
+            ValueType::Sequence => &instr.instructions[1..],
+            _ => {
+                return Ok(());
+            }
+        };
+        let need_pmap = self.require_presence_map_bit(instructions)?;
+        instr.has_pmap.set(need_pmap);
+        Ok(())
+    }
+
+    fn has_presence_map_bit(&self, instr: &Instruction) -> Result<bool> {
+        self.set_has_pmap(instr)?;
+
+        match instr.value_type {
+            ValueType::Group => {
+                return Ok(instr.is_optional());
+            }
+            ValueType::Sequence => {
+                return self.has_presence_map_bit(instr.instructions.first().ok_or_else(|| {
+                    Error::Static(format!("sequence '{}' has no length field", instr.name))
+                })?);
+            }
+            ValueType::TemplateReference => {
+                if instr.name.is_empty() {
+                    return Ok(false);
+                }
+                let template = self
+                    .templates_by_name
+                    .get(&instr.name)
+                    .ok_or_else(|| Error::Static(format!("template '{}' not found", instr.name)))?;
+                return template.require_pmap.get().ok_or_else(|| {
+                    Error::Static(format!(
+                        "template '{}' not initialized yet; consider reordering templates",
+                        instr.name
+                    ))
+                });
+            }
+            ValueType::Decimal => {
+                if instr.has_pmap.get() {
+                    return Ok(true);
+                }
+            }
+            _ => {}
+        }
+        match instr.operator {
+            Operator::None | Operator::Delta => Ok(false),
+            Operator::Default | Operator::Copy | Operator::Increment | Operator::Tail => Ok(true),
+            Operator::Constant => Ok(instr.is_optional()),
+        }
+    }
+}

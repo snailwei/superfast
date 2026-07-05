@@ -1,0 +1,13 @@
+mod bug;
+mod copy_strict;
+mod decimal;
+mod decimal_parts;
+mod field_tests;
+mod nullable_d6;
+mod operator_strict;
+mod operators;
+mod pmap;
+mod reader;
+mod spec_minimal;
+mod structural;
+mod writer;

@@ -1,0 +1,32 @@
+<templates>
+  <template id="100" name="MarketData">
+    <!-- Constant: never written on the wire; value always comes from schema -->
+    <uInt32 id="1" name="MessageType"><constant value="1"/></uInt32>
+
+    <!-- No operator: mandatory, always written -->
+    <string id="2" name="Symbol"/>
+
+    <!-- Increment: omitted when value == previous + 1 (ideal for sequence numbers) -->
+    <uInt64 id="3" name="SequenceNumber"><increment value="0"/></uInt64>
+
+    <!-- Decimal: exact representation via exponent + mantissa -->
+    <decimal id="4" name="Price"/>
+
+    <!-- Copy: only written when value changes from previous message -->
+    <uInt32 id="5" name="Volume" presence="optional"><copy value="0"/></uInt32>
+
+    <!-- Default: omitted when value equals the schema default -->
+    <int32 id="6" name="Side" presence="optional"><default value="0"/></int32>
+
+    <!-- Tail: only the new suffix is written (for string updates) -->
+    <string id="7" name="Exchange" presence="optional"><tail/></string>
+  </template>
+
+  <template id="101" name="TradeCapture">
+    <uInt32 id="10" name="TradeID"><increment value="0"/></uInt32>
+    <string id="11" name="Symbol"/>
+    <decimal id="12" name="Price"/>
+    <uInt64 id="13" name="Quantity"/>
+    <string id="14" name="Timestamp" presence="optional"><copy value=""/></string>
+  </template>
+</templates>

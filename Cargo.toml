@@ -1,0 +1,13 @@
+[package]
+name = "superfast"
+version = "0.1.0"
+edition = "2024"
+authors = ["Sunding Wei <weisunding@gmail.com>"]
+description = "FAST protocol encoder/decoder for Rust"
+repository = "https://github.com/snailwei/superfast"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+roxmltree = "0.21"
+serde_bytes = "0.11.19"
