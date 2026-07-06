@@ -131,25 +131,7 @@ impl FastDecoder {
     where
         T: serde::de::Deserialize<'static>,
     {
-        let mut reader = FastReader::new(bytes);
-        let mut ctx = DecoderContext {
-            definitions: &mut self.definitions,
-            context: &mut self.context,
-            rdr: &mut reader,
-            template_id: Stacked::new_empty(),
-            dictionary: Stacked::new(Dictionary::Global),
-            type_ref: Stacked::new(TypeRef::Any),
-            presence_map: Stacked::new_empty(),
-            model: crate::model::ModelFactory::new(),
-            strict: self.strict,
-        };
-        ctx.decode_template()?;
-
-        let model = std::mem::take(&mut ctx.model);
-        let consumed = model.consumed();
-        let data = model
-            .data
-            .ok_or_else(|| Error::Runtime("No data in message".to_string()))?;
+        let (data, consumed) = self.parse(bytes)?;
         let msg = T::deserialize(data).map_err(|e| Error::Runtime(e.to_string()))?;
         Ok((msg, consumed))
     }
