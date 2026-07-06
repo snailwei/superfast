@@ -60,7 +60,7 @@ fn increment_absent_with_initial_increments() {
     bytes[0] &= 0xDF; // clear bit 5 → absent
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Undefined context + initial_value=10 → increment(10) = 11
     assert_eq!(
@@ -92,7 +92,7 @@ fn increment_loose_d5_uses_type_default() {
 
     let mut dec = FastDecoder::new(xml).unwrap();
     dec.set_strict(false);
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Strict or loose: initial_value=Some(0), increment(0) = 1
     assert_eq!(
@@ -120,14 +120,14 @@ fn increment_chain_present_then_absent() {
     // Message 1: Seq = 100 (present)
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(100))));
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert_eq!(get_uint32(&data1, "Seq"), Some(100));
 
     // Message 2: Seq absent → increment previous (100) → 101
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(0))));
     let mut msg2 = enc.encode_template_data(td).unwrap();
     msg2[0] &= 0xDF; // clear bit 5
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     assert_eq!(get_uint32(&data2, "Seq"), Some(101));
 }
 
@@ -150,7 +150,7 @@ fn increment_optional_undefined_uses_initial() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Optional + initial_value=Some(0): initial value takes precedence
     // increment(0) = 1
@@ -179,7 +179,7 @@ fn increment_sequence_absent() {
     // Message 1: Seq = 5
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(5))));
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert_eq!(get_uint32(&data1, "Seq"), Some(5));
 
     // Message 2-4: all absent → 6, 7, 8
@@ -187,7 +187,7 @@ fn increment_sequence_absent() {
         let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(0))));
         let mut msg = enc.encode_template_data(td).unwrap();
         msg[0] &= 0xDF;
-        let (data, _) = dec.decode_raw(&msg).unwrap();
+        let (data, _) = dec.parse(&msg).unwrap();
         assert_eq!(get_uint32(&data, "Seq"), Some(expected));
     }
 }
@@ -217,7 +217,7 @@ fn tail_err_d5_mandatory_no_initial() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let result = dec.decode_raw(&bytes);
+    let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Expected ERR D5");
     let err = result.unwrap_err().to_string();
@@ -247,7 +247,7 @@ fn tail_loose_d5_uses_type_default() {
 
     let mut dec = FastDecoder::new(xml).unwrap();
     dec.set_strict(false);
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Loose mode: type default for string = ""
     assert_eq!(
@@ -279,7 +279,7 @@ fn tail_initial_value_on_undefined() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     assert_eq!(
         get_string(&data, "Txt"),
@@ -310,7 +310,7 @@ fn tail_chain_present_then_absent() {
         ValueData::Value(Some(Value::AsciiString("ABCDE".to_string()))),
     );
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert_eq!(get_string(&data1, "Txt"), Some("ABCDE".to_string()));
 
     // Message 2: Txt absent → copies "ABCDE"
@@ -321,7 +321,7 @@ fn tail_chain_present_then_absent() {
     );
     let mut msg2 = enc.encode_template_data(td).unwrap();
     msg2[0] &= 0xDF; // clear bit 5
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     assert_eq!(get_string(&data2, "Txt"), Some("ABCDE".to_string()));
 }
 
@@ -347,7 +347,7 @@ fn tail_optional_undefined_returns_none() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     assert!(
         get_string(&data, "Txt").is_none(),
@@ -377,7 +377,7 @@ fn tail_present_truncates_and_appends() {
         ValueData::Value(Some(Value::AsciiString("ABCDEFGHIJ".to_string()))),
     );
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert_eq!(get_string(&data1, "Txt"), Some("ABCDEFGHIJ".to_string()));
 
     // Message 2: Txt = "XYZ" (tail present, replaces last 3 chars)
@@ -387,7 +387,7 @@ fn tail_present_truncates_and_appends() {
         ValueData::Value(Some(Value::AsciiString("XYZ".to_string()))),
     );
     let msg2 = enc.encode_template_data(td).unwrap();
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     assert_eq!(get_string(&data2, "Txt"), Some("ABCDEFGXYZ".to_string()));
 }
 
@@ -410,7 +410,7 @@ fn tail_empty_state_uses_initial_as_base() {
     // Message 1: NULL (sets previous state to "empty")
     let td = make_td("T", "Txt", ValueData::Value(None));
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert!(
         get_string(&data1, "Txt").is_none(),
         "Message 1: Txt should be None (NULL/empty)"
@@ -424,7 +424,7 @@ fn tail_empty_state_uses_initial_as_base() {
         ValueData::Value(Some(Value::AsciiString("SUFFIX".to_string()))),
     );
     let msg2 = enc.encode_template_data(td).unwrap();
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
 
     assert_eq!(
         get_string(&data2, "Txt"),
@@ -451,7 +451,7 @@ fn copy_strict_regression() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let result = dec.decode_raw(&bytes);
+    let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Copy: expected ERR D5 in strict mode");
     let err = result.unwrap_err().to_string();

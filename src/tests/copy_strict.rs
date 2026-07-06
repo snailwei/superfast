@@ -47,7 +47,7 @@ fn copy_err_d5_mandatory_no_initial() {
     bytes[0] &= 0xDF; // clear bit 5 (0xE0 -> 0xC0)
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let result = dec.decode_raw(&bytes);
+    let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Expected ERR D5");
     let err = result.unwrap_err().to_string();
@@ -71,7 +71,7 @@ fn copy_loose_mode_no_err_d5() {
 
     let mut dec = FastDecoder::new(xml).unwrap();
     dec.set_strict(false);
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     let group = match &data.value {
         ValueData::Group(g) => g,
@@ -103,7 +103,7 @@ fn copy_initial_value_on_undefined() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     let group = match &data.value {
         ValueData::Group(g) => g,
@@ -135,7 +135,7 @@ fn copy_optional_no_initial_undefined_becomes_empty() {
     bytes[0] &= 0xDF; // clear bit 5
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     let group = match &data.value {
         ValueData::Group(g) => g,
@@ -170,27 +170,27 @@ fn copy_chain_reuse_then_override() {
     // Message 1: Seq = 10
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(10))));
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert_eq!(get_uint32(&data1, "Seq"), Some(10));
 
     // Message 2: Seq absent → copies 10
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(0))));
     let mut msg2 = enc.encode_template_data(td).unwrap();
     msg2[0] &= 0xDF; // clear Seq pmap bit
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     assert_eq!(get_uint32(&data2, "Seq"), Some(10));
 
     // Message 3: Seq = 20 → overrides
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(20))));
     let msg3 = enc.encode_template_data(td).unwrap();
-    let (data3, _) = dec.decode_raw(&msg3).unwrap();
+    let (data3, _) = dec.parse(&msg3).unwrap();
     assert_eq!(get_uint32(&data3, "Seq"), Some(20));
 
     // Message 4: Seq absent → copies 20
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(0))));
     let mut msg4 = enc.encode_template_data(td).unwrap();
     msg4[0] &= 0xDF;
-    let (data4, _) = dec.decode_raw(&msg4).unwrap();
+    let (data4, _) = dec.parse(&msg4).unwrap();
     assert_eq!(get_uint32(&data4, "Seq"), Some(20));
 }
 
@@ -210,7 +210,7 @@ fn copy_optional_null_then_absent() {
     let msg1 = enc.encode_template_data(td).unwrap();
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     let group1 = match &data1.value {
         ValueData::Group(g) => g,
         _ => panic!("Expected group"),
@@ -227,7 +227,7 @@ fn copy_optional_null_then_absent() {
     let mut msg2 = enc.encode_template_data(td).unwrap();
     msg2[0] &= 0xDF; // clear bit 5
 
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     let group2 = match &data2.value {
         ValueData::Group(g) => g,
         _ => panic!("Expected group"),
@@ -256,7 +256,7 @@ fn copy_assigned_previous_reuse() {
 
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));
     let msg1 = enc.encode_template_data(td).unwrap();
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     let group1 = match &data1.value {
         ValueData::Group(g) => g,
         _ => panic!("Expected group"),
@@ -273,7 +273,7 @@ fn copy_assigned_previous_reuse() {
     let mut msg2 = enc.encode_template_data(td).unwrap();
     msg2[0] &= 0xDF; // clear bit 5
 
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     let group2 = match &data2.value {
         ValueData::Group(g) => g,
         _ => panic!("Expected group"),
@@ -304,7 +304,7 @@ fn copy_optional_undefined_then_present() {
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));
     let mut msg1 = enc.encode_template_data(td).unwrap();
     msg1[0] &= 0xDF; // clear Seq bit
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert!(
         get_uint32(&data1, "Seq").is_none(),
         "Seq should be absent/None"
@@ -313,13 +313,13 @@ fn copy_optional_undefined_then_present() {
     // Message 2: Seq present → overrides with actual value
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let msg2 = enc.encode_template_data(td).unwrap();
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     assert_eq!(get_uint32(&data2, "Seq"), Some(42));
 
     // Message 3: Seq absent → copies 42
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));
     let mut msg3 = enc.encode_template_data(td).unwrap();
     msg3[0] &= 0xDF;
-    let (data3, _) = dec.decode_raw(&msg3).unwrap();
+    let (data3, _) = dec.parse(&msg3).unwrap();
     assert_eq!(get_uint32(&data3, "Seq"), Some(42));
 }

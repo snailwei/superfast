@@ -71,7 +71,7 @@ fn copy_mandatory_nullable_err_d6() {
     // Message 1: NULL
     let mut msg1 = sample.clone();
     msg1[2] = 0x80;
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert!(
         field_is_empty(&data1, "Txt"),
         "Message 1: Txt should be empty (NULL)"
@@ -79,7 +79,7 @@ fn copy_mandatory_nullable_err_d6() {
 
     // Message 2: absent → ERR D6
     let absent = [0xC0, 0x81];
-    let result = dec.decode_raw(&absent);
+    let result = dec.parse(&absent);
     assert!(result.is_err(), "Expected ERR D6");
     assert!(result.unwrap_err().to_string().contains("ERR D6"));
 }
@@ -108,11 +108,11 @@ fn copy_mandatory_nullable_err_d6_loose() {
 
     let mut msg1 = sample.clone();
     msg1[2] = 0x80;
-    let (_data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (_data1, _) = dec.parse(&msg1).unwrap();
 
     let absent = [0xC0, 0x81];
     dec.set_strict(false);
-    let (data2, _) = dec.decode_raw(&absent).unwrap();
+    let (data2, _) = dec.parse(&absent).unwrap();
     assert!(
         field_is_empty(&data2, "Txt"),
         "Loose mode: Txt should be empty"
@@ -143,7 +143,7 @@ fn copy_mandatory_nullable_null_then_present() {
 
     let mut msg1 = sample.clone();
     msg1[2] = 0x80;
-    let (_data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (_data1, _) = dec.parse(&msg1).unwrap();
 
     let td = make_td(
         "T",
@@ -151,7 +151,7 @@ fn copy_mandatory_nullable_null_then_present() {
         ValueData::Value(Some(Value::AsciiString("Hello".to_string()))),
     );
     let msg2 = enc.encode_template_data(td).unwrap();
-    let (data2, _) = dec.decode_raw(&msg2).unwrap();
+    let (data2, _) = dec.parse(&msg2).unwrap();
     let group = match &data2.value {
         ValueData::Group(g) => g,
         _ => panic!("Expected group"),
@@ -202,7 +202,7 @@ fn copy_mandatory_nullable_int_err_d6() {
     }
     eprintln!("NULL message: {:02X?}", msg1);
 
-    let (data1, _) = dec.decode_raw(&msg1).unwrap();
+    let (data1, _) = dec.parse(&msg1).unwrap();
     assert!(
         field_is_empty(&data1, "Seq"),
         "Message 1: Seq should be empty (NULL)"
@@ -217,7 +217,7 @@ fn copy_mandatory_nullable_int_err_d6() {
     let absent = enc.encode_template_data(td2).unwrap();
     eprintln!("Absent message: {:02X?}", absent);
 
-    let result = dec.decode_raw(&absent);
+    let result = dec.parse(&absent);
     assert!(result.is_err(), "Expected ERR D6");
     let err = result.unwrap_err().to_string();
     assert!(err.contains("ERR D6"), "Expected ERR D6, got: {}", err);
@@ -252,8 +252,8 @@ fn nullable_distinct_from_optional() {
     enc.encode_template_data(td).unwrap();
 
     let absent = [0xC0, 0x81];
-    dec.decode_raw(&absent).unwrap();
-    dec.decode_raw(&absent).unwrap(); // No error for optional
+    dec.parse(&absent).unwrap();
+    dec.parse(&absent).unwrap(); // No error for optional
 
     // Nullable: NULL then absent — ERR D6
     let mut enc2 = FastEncoder::new(xml_nullable).unwrap();
@@ -267,9 +267,9 @@ fn nullable_distinct_from_optional() {
 
     let mut null_msg = sample2.clone();
     null_msg[2] = 0x80;
-    dec2.decode_raw(&null_msg).unwrap();
+    dec2.parse(&null_msg).unwrap();
 
-    let result = dec2.decode_raw(&absent);
+    let result = dec2.parse(&absent);
     assert!(result.is_err(), "Nullable: expected ERR D6");
     assert!(result.unwrap_err().to_string().contains("ERR D6"));
 }

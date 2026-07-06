@@ -87,9 +87,20 @@ impl FastDecoder {
         Ok((msg, consumed as u64))
     }
 
-    /// Decode raw, returning the intermediate `TemplateData` without serde deserialization.
+    /// Parse one FAST message into an intermediate `TemplateData` without
+    /// deserializing it into a typed struct.
+    ///
+    /// Use this when the message type is unknown at compile time or when you
+    /// need to inspect the parsed data (field names, values) before deciding
+    /// how to deserialize it. The returned [`TemplateData`](crate::model::template::TemplateData)
+    /// carries the template name and a map of field names to decoded values,
+    /// and can be deserialized later into any `serde::Deserialize` type.
+    ///
+    /// For known message types, prefer [`decode`](Self::decode) which returns
+    /// the typed struct directly.
+    ///
     /// Returns `(TemplateData, bytes_consumed)`.
-    pub fn decode_raw(
+    pub fn parse(
         &mut self,
         bytes: &[u8],
     ) -> Result<(crate::model::template::TemplateData, usize)> {

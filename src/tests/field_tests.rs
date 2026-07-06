@@ -37,7 +37,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
     let mut enc = FastEncoder::new(xml).unwrap();
     let mut dec = FastDecoder::new(xml).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len(), "decoder did not consume all bytes");
     tpl
 }
@@ -485,12 +485,12 @@ fn delta_integer_basic() {
 
     // Decode both with same decoder
     let mut dec = FastDecoder::new(&xml).unwrap();
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         get_field(&tpl, "Val"),
         &ValueData::Value(Some(Value::Int32(100)))
     );
-    let (tpl, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl, _) = dec.parse(&bytes2).unwrap();
     assert_eq!(
         get_field(&tpl, "Val"),
         &ValueData::Value(Some(Value::Int32(105)))
@@ -517,12 +517,12 @@ fn delta_string_basic() {
     let bytes2 = enc.encode_template_data(td).unwrap();
 
     let mut dec = FastDecoder::new(&xml).unwrap();
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         get_field(&tpl, "Txt"),
         &ValueData::Value(Some(Value::AsciiString("hello".to_string())))
     );
-    let (tpl, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl, _) = dec.parse(&bytes2).unwrap();
     assert_eq!(
         get_field(&tpl, "Txt"),
         &ValueData::Value(Some(Value::AsciiString("world".to_string())))
@@ -540,7 +540,7 @@ fn delta_bytevector_basic() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
     let mut dec = FastDecoder::new(&xml).unwrap();
-    let (tpl, _consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
         *get_field(&tpl, "Data"),
         ValueData::Value(Some(Value::Bytes(vec![0x41, 0x42, 0x43])))
@@ -567,12 +567,12 @@ fn delta_decimal_basic() {
     let bytes2 = enc.encode_template_data(td).unwrap();
 
     let mut dec = FastDecoder::new(&xml).unwrap();
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         *get_field(&tpl, "Price"),
         ValueData::Value(Some(Value::Decimal(Decimal::new(0, 100000))))
     );
-    let (tpl, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl, _) = dec.parse(&bytes2).unwrap();
     assert_eq!(
         *get_field(&tpl, "Price"),
         ValueData::Value(Some(Value::Decimal(Decimal::new(0, 100500))))
@@ -711,7 +711,7 @@ fn block_single_message() {
     );
 
     let mut dec = FastDecoder::new(&xml).unwrap();
-    let (tpl, consumed) = dec.decode_raw(data).unwrap();
+    let (tpl, consumed) = dec.parse(data).unwrap();
     assert_eq!(
         consumed as usize,
         data.len(),
@@ -752,7 +752,7 @@ fn block_multiple_messages() {
     let mut dec = FastDecoder::new(&xml).unwrap();
     let mut offset = 0;
     for (i, &expected) in values.iter().enumerate() {
-        let (tpl, consumed) = dec.decode_raw(&data[offset..]).unwrap();
+        let (tpl, consumed) = dec.parse(&data[offset..]).unwrap();
         assert_eq!(
             get_field(&tpl, "Val"),
             &ValueData::Value(Some(Value::UInt32(expected))),
@@ -795,7 +795,7 @@ fn block_message_boundary() {
     // Decoding the partial message should fail
     let mut dec = FastDecoder::new(&xml).unwrap();
     assert!(
-        dec.decode_raw(data).is_err(),
+        dec.parse(data).is_err(),
         "partial message should fail to decode"
     );
 }
@@ -850,7 +850,7 @@ fn stream_bare_messages() {
     let mut dec = FastDecoder::new(&xml).unwrap();
     let mut offset = 0usize;
     for (i, &expected) in values.iter().enumerate() {
-        let (tpl, consumed) = dec.decode_raw(&all_bytes[offset..]).unwrap();
+        let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
         assert_eq!(
             get_field(&tpl, "Val"),
             &ValueData::Value(Some(Value::UInt32(expected))),
@@ -907,7 +907,7 @@ fn stream_blocks() {
 
         let mut offset = 0;
         while offset < data.len() {
-            let (tpl, consumed) = dec.decode_raw(&data[offset..]).unwrap();
+            let (tpl, consumed) = dec.parse(&data[offset..]).unwrap();
             assert_eq!(
                 get_field(&tpl, "Val"),
                 &ValueData::Value(Some(Value::UInt32(expected[msg_count])))
@@ -961,7 +961,7 @@ fn stream_mixed_types() {
     let mut offset = 0;
 
     // Message 1: IntMsg(42)
-    let (tpl, consumed) = dec.decode_raw(&all_bytes[offset..]).unwrap();
+    let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
     assert_eq!(tpl.name, "IntMsg");
     assert_eq!(
         *get_field(&tpl, "Val"),
@@ -970,7 +970,7 @@ fn stream_mixed_types() {
     offset += consumed as usize;
 
     // Message 2: StrMsg("hello")
-    let (tpl, consumed) = dec.decode_raw(&all_bytes[offset..]).unwrap();
+    let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
     assert_eq!(tpl.name, "StrMsg");
     assert_eq!(
         *get_field(&tpl, "Txt"),
@@ -979,7 +979,7 @@ fn stream_mixed_types() {
     offset += consumed as usize;
 
     // Message 3: IntMsg(99)
-    let (tpl, consumed) = dec.decode_raw(&all_bytes[offset..]).unwrap();
+    let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
     assert_eq!(tpl.name, "IntMsg");
     assert_eq!(
         *get_field(&tpl, "Val"),

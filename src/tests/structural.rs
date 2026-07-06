@@ -42,7 +42,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
     let mut enc = FastEncoder::new(xml).unwrap();
     let mut dec = FastDecoder::new(xml).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
         consumed,
         bytes.len(),
@@ -453,7 +453,7 @@ fn sequence_copy_length_omits_when_zero() {
     let bytes = enc.encode_template_data(td).unwrap();
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len());
     if let ValueData::Sequence(items) = get_field(&tpl, "Items") {
         assert!(items.is_empty());
@@ -687,9 +687,9 @@ fn templateref_dynamic_multiple() {
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
     let mut dec = FastDecoder::new(xml).unwrap();
-    let (tpl1, consumed1) = dec.decode_raw(&bytes1).unwrap();
+    let (tpl1, consumed1) = dec.parse(&bytes1).unwrap();
     assert_eq!(consumed1, bytes1.len());
-    let (tpl2, consumed2) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl2, consumed2) = dec.parse(&bytes2).unwrap();
     assert_eq!(consumed2, bytes2.len());
 
     assert_eq!(*get_field(&tpl1, "Outer"), make_val(Value::UInt32(100)));
@@ -924,21 +924,21 @@ fn typeref_dictionary_type_scoping() {
     let bytes_b = enc.encode_template_data(td_b).unwrap();
 
     // Decode and verify values
-    let (tpl_a1, _) = dec.decode_raw(&bytes_a1).unwrap();
+    let (tpl_a1, _) = dec.parse(&bytes_a1).unwrap();
     assert_eq!(
         *get_field(&tpl_a1, "Label"),
         make_val(Value::AsciiString("hello".to_string()))
     );
     assert_eq!(*get_field(&tpl_a1, "Val"), make_val(Value::UInt32(1)));
 
-    let (tpl_a2, _) = dec.decode_raw(&bytes_a2).unwrap();
+    let (tpl_a2, _) = dec.parse(&bytes_a2).unwrap();
     assert_eq!(
         *get_field(&tpl_a2, "Label"),
         make_val(Value::AsciiString("hello".to_string()))
     );
     assert_eq!(*get_field(&tpl_a2, "Val"), make_val(Value::UInt32(2)));
 
-    let (tpl_b, _) = dec.decode_raw(&bytes_b).unwrap();
+    let (tpl_b, _) = dec.parse(&bytes_b).unwrap();
     assert_eq!(
         *get_field(&tpl_b, "Label"),
         make_val(Value::AsciiString("hello".to_string()))
@@ -995,13 +995,13 @@ fn typeref_shared_state_same_type() {
     );
 
     // Decode and verify
-    let (da, _) = dec.decode_raw(&bytes_a).unwrap();
+    let (da, _) = dec.parse(&bytes_a).unwrap();
     assert_eq!(
         *get_field(&da, "Label"),
         make_val(Value::AsciiString("shared".to_string()))
     );
 
-    let (db, _) = dec.decode_raw(&bytes_b).unwrap();
+    let (db, _) = dec.parse(&bytes_b).unwrap();
     assert_eq!(
         *get_field(&db, "Label"),
         make_val(Value::AsciiString("shared".to_string()))
@@ -1108,8 +1108,8 @@ fn typeref_group_namespace_isolation() {
     );
 
     // Decode and verify
-    let (d1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (d2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (d1, _) = dec.parse(&bytes1).unwrap();
+    let (d2, _) = dec.parse(&bytes2).unwrap();
     assert_eq!(get_field(&d1, "BidSide"), get_field(&d2, "BidSide"));
     assert_eq!(get_field(&d1, "AskSide"), get_field(&d2, "AskSide"));
 }

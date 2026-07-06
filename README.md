@@ -326,39 +326,47 @@ let (m1, _): (MarketData, u64) = decoder.decode(&bytes1)?;
 let (m2, _): (MarketData, u64) = decoder.decode(&bytes2)?;
 ```
 
-### Bypass Serde with `decode_raw`
+### Handling Unknown Types on the Wire with `parse`
 
-The standard `decode::<T>()` deserializes into a typed struct via serde. For high-throughput
-scenarios (tick-by-tick market data, order book updates), you can skip serde entirely and
-extract fields directly from the intermediate `TemplateData`:
+The standard `decode::<T>()` decodes directly into a known struct type. When the wire
+carries multiple template types and you don't know which one comes next, use `parse()`
+to get the intermediate `TemplateData` first — it reveals the template name so you can
+dispatch, then deserialize into the correct known struct:
 
 ```rust
 use superfast::{FastDecoder, FastEncoder};
 use superfast::model::template::TemplateData;
 
-// Decode raw — returns TemplateData, not a typed struct
-let (td, consumed): (TemplateData, usize) = decoder.decode_raw(buffer)?;
+// Parse — returns TemplateData for the first message in the buffer
+let (td, consumed): (TemplateData, usize) = decoder.parse(buffer)?;
 
 // Inspect the template name to dispatch
 match td.name.as_str() {
-    "NGTSTick" => handle_tick(&td),
-    "XtsTick"  => handle_xts_tick(&td),
-    _ => {}
-}
-
-fn handle_tick(td: &TemplateData) {
-    // Extract fields by name — no serde, no struct needed
-    let symbol = td.get_str("SecurityID");
-    let price  = td.get_i32("Price");
-    let qty    = td.get_i64("Qty");
-    // ... process directly, no allocation
+    "NGTSTick" => {
+        let msg: NgtsTick = serde::Deserialize::deserialize(td)?;
+        handle_tick(&msg);
+    }
+    "XtsTick" => {
+        let msg: XtsTick = serde::Deserialize::deserialize(td)?;
+        handle_xts_tick(&msg);
+    }
+    _ => {} // unknown template
 }
 ```
 
-### Complete Example: Raw Tick Extraction
+The fields are also accessible directly via convenience methods, so you can inspect
+individual values before committing to deserialization:
 
-Here's a self-contained example that encodes a tick, decodes it raw, and extracts fields
-without ever defining a Rust struct for the message:
+```rust
+let symbol = td.get_str("SecurityID");  // Some("600519")
+let price  = td.get_i32("Price");       // Some(531)
+let qty    = td.get_i64("Qty");         // Some(100_000)
+```
+
+### Complete Example: Parse then Deserialize
+
+Here's a self-contained example that encodes a tick, parses it, and deserializes the
+resulting `TemplateData` into a known struct:
 
 ```rust
 use superfast::{FastDecoder, FastEncoder};
@@ -374,8 +382,7 @@ const SCHEMA: &str = r#"<templates xmlns="http://www.fixprotocol.org/ns/template
   </template>
 </templates>"#;
 
-// Define a struct only for the encoder (the decoder skips it entirely)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename = "Tick")]
 struct Tick {
     #[serde(rename = "SecurityID")] security_id: String,
@@ -397,28 +404,28 @@ fn main() {
     };
     let bytes = enc.encode(&msg).unwrap();
 
-    // Decode raw — no struct involved
-    let (td, _consumed): (TemplateData, usize) = dec.decode_raw(&bytes).unwrap();
-
+    // Step 1: parse into TemplateData — reveals the template name
+    let (td, _consumed): (TemplateData, usize) = dec.parse(&bytes).unwrap();
     assert_eq!(td.name, "Tick");
+
+    // Step 2: inspect fields directly
     assert_eq!(td.get_str("SecurityID"), Some("600519"));
     assert_eq!(td.get_i32("Price"), Some(531));
-    assert_eq!(td.get_i64("Qty"), Some(100_000));
 
-    // Type-safe mismatch: querying a string field as int returns None
-    assert_eq!(td.get_i32("SecurityID"), None);
-    assert_eq!(td.get_str("Price"), None);
+    // Step 3: deserialize into the known struct type
+    let decoded: Tick = serde::Deserialize::deserialize(td).unwrap();
+    assert_eq!(decoded, msg);
 }
 ```
 
-**When to use `decode_raw`:**
+**When to use `parse`:**
 
-| `decode::<T>()` | `decode_raw()` |
+| `decode::<T>()` | `parse()` → deserialize |
 |---|---|
-| Compile-time type safety | Zero allocation, no struct needed |
-| Deserializes all fields | Extract only the fields you need |
-| One struct per template | Multi-template dispatch via `td.name` |
-| Good for depth snapshots, heartbeats | Ideal for high-frequency tick feeds |
+| Type known at compile time | Type determined at runtime by template name |
+| One call, decode + deserialize | Two calls: parse → inspect → deserialize |
+| Same struct for every message | Different struct per template type |
+| Good for steady-state feeds | Good for multi-type streams or debugging |
 
 ## Architecture
 

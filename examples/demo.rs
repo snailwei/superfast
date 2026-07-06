@@ -3,6 +3,7 @@
 //! multi-template enums, decimal usage, and context management.
 
 use superfast::decimal::Decimal;
+use superfast::model::template::TemplateData;
 use superfast::{FastDecoder, FastEncoder};
 
 // ---------------------------------------------------------------------------
@@ -223,6 +224,67 @@ fn main() -> superfast::Result<()> {
 
     // Note: f32/f64 are rejected for FAST decimal fields — use Decimal
     // to avoid silent precision loss.
+
+    // -----------------------------------------------------------------------
+    // 9. Handling Unknown Types on the Wire with `parse`
+    // -----------------------------------------------------------------------
+    // The standard `decode::<T>()` decodes directly into a known struct type.
+    // When the wire carries multiple template types and you don't know which
+    // one comes next, use `parse()` to get the intermediate `TemplateData`
+    // first — it reveals the template name so you can dispatch, then
+    // deserialize into the correct known struct.
+
+    const TICK_SCHEMA: &str = r#"<templates xmlns="http://www.fixprotocol.org/ns/template-definition">
+  <template id="100" name="Tick">
+    <string id="48" name="SecurityID"/>
+    <int32 id="31" name="Price"/>
+    <int64 id="32" name="Qty"/>
+    <uInt64 id="1" name="SeqNum" presence="optional"><increment value="0"/></uInt64>
+  </template>
+</templates>"#;
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    #[serde(rename = "Tick")]
+    struct Tick {
+        #[serde(rename = "SecurityID")]
+        security_id: String,
+        #[serde(rename = "Price")]
+        price: i32,
+        #[serde(rename = "Qty")]
+        qty: i64,
+        #[serde(rename = "SeqNum", default)]
+        seq_num: Option<u64>,
+    }
+
+    let mut tick_enc = FastEncoder::new(TICK_SCHEMA)?;
+    let mut tick_dec = FastDecoder::new(TICK_SCHEMA)?;
+
+    // Encode a tick
+    let tick = Tick {
+        security_id: "600519".into(),
+        price: 531,
+        qty: 100_000,
+        seq_num: Some(1),
+    };
+    let tick_bytes = tick_enc.encode(&tick)?;
+
+    // Step 1: parse into TemplateData — reveals the template name
+    let (td, _consumed): (TemplateData, usize) = tick_dec.parse(&tick_bytes)?;
+    assert_eq!(td.name, "Tick");
+
+    // Step 2: inspect fields directly via convenience methods
+    assert_eq!(td.get_str("SecurityID"), Some("600519"));
+    assert_eq!(td.get_i32("Price"), Some(531));
+    assert_eq!(td.get_i64("Qty"), Some(100_000));
+
+    // Step 3: deserialize into the known struct type
+    let decoded_tick: Tick = serde::Deserialize::deserialize(td)?;
+    assert_eq!(decoded_tick, tick);
+    println!(
+        "Parse + deserialize: {} price={} qty={}",
+        decoded_tick.security_id, decoded_tick.price, decoded_tick.qty
+    );
+
     println!("\nAll demo examples completed successfully!");
 
     Ok(())

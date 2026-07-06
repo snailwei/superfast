@@ -124,7 +124,19 @@ impl<'de> serde::Deserializer<'de> for TemplateData {
     forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string
         bytes byte_buf option unit unit_struct newtype_struct
-        seq tuple tuple_struct map struct identifier ignored_any
+        seq tuple tuple_struct map identifier ignored_any
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_struct("", &[], visitor)
     }
 
     fn deserialize_enum<V>(
@@ -414,10 +426,10 @@ mod tests {
         assert_eq!(td.get_decimal("Val"), None);
     }
 
-    // --- integration: encode then decode_raw, then use accessors ---
+    // --- integration: encode, parse, then use accessors ---
 
     #[test]
-    fn get_methods_via_decode_raw() {
+    fn get_methods_via_parse() {
         use crate::decimal::Decimal;
         use crate::{FastDecoder, FastEncoder};
         use serde::{Deserialize, Serialize};
@@ -463,7 +475,7 @@ mod tests {
         let bytes = enc.encode(&msg).unwrap();
 
         let mut dec = FastDecoder::new(XML).unwrap();
-        let (td, _consumed) = dec.decode_raw(&bytes).expect("decode raw");
+        let (td, _consumed) = dec.parse(&bytes).expect("parse");
 
         assert_eq!(td.name, "Tick");
         assert_eq!(td.get_str("SecurityID"), Some("600519"));

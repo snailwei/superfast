@@ -36,7 +36,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
     let mut enc = FastEncoder::new(xml).unwrap();
     let mut dec = FastDecoder::new(xml).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
         consumed,
         bytes.len(),
@@ -474,8 +474,8 @@ fn spec_minimal_second_message_compression() {
     );
 
     // Decode and verify
-    let (_data1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (data2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (_data1, _) = dec.parse(&bytes1).unwrap();
+    let (data2, _) = dec.parse(&bytes2).unwrap();
 
     if let ValueData::Group(g) = &data2.value {
         // MsgSeqNum incremented
@@ -632,7 +632,7 @@ fn spec_minimal_copy_dictionary_isolation() {
         ("MDEntries", ValueData::Sequence(vec![])),
     ]);
     let bytes1 = enc.encode_template_data(td1).unwrap();
-    dec.decode_raw(&bytes1).unwrap();
+    dec.parse(&bytes1).unwrap();
 
     // Message 2: change SenderCompID but keep Symbol
     let header2 = ValueData::Group({
@@ -675,7 +675,7 @@ fn spec_minimal_copy_dictionary_isolation() {
         ("MDEntries", ValueData::Sequence(vec![])),
     ]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
-    let (data2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (data2, _) = dec.parse(&bytes2).unwrap();
 
     if let ValueData::Group(g) = &data2.value {
         // SenderCompID changed to EXCH2

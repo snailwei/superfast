@@ -234,7 +234,7 @@ fn decimal_roundtrip_mandatory() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let group = if let ValueData::Group(ref g) = tpl.value {
         g
     } else {
@@ -261,7 +261,7 @@ fn decimal_roundtrip_positive_exponent() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let group = if let ValueData::Group(ref g) = tpl.value {
         g
     } else {
@@ -288,7 +288,7 @@ fn decimal_roundtrip_negative_value() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let group = if let ValueData::Group(ref g) = tpl.value {
         g
     } else {
@@ -315,7 +315,7 @@ fn decimal_roundtrip_zero() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let group = if let ValueData::Group(ref g) = tpl.value {
         g
     } else {
@@ -339,7 +339,7 @@ fn decimal_roundtrip_optional_absent() {
     let td = make_td("DecTest", ValueData::Value(None));
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let group = if let ValueData::Group(ref g) = tpl.value {
         g
     } else {

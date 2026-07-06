@@ -41,7 +41,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
     let mut enc = FastEncoder::new(xml).unwrap();
     let mut dec = FastDecoder::new(xml).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
         consumed,
         bytes.len(),
@@ -123,8 +123,8 @@ fn exponent_copy_changed_writes() {
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
     // Decode
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     let d1 = get_decimal(&tpl1, "Price");
     assert_eq!(d1.exponent, -2);
@@ -160,8 +160,8 @@ fn mantissa_copy_unchanged_omits() {
     let td2 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     let d1 = get_decimal(&tpl1, "Price");
     assert_eq!(d1.exponent, -2);
@@ -192,8 +192,8 @@ fn mantissa_copy_changed_writes() {
     let td2 = make_td("Dec", &[("Price", make_dec(-2, 20000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-2, 20000));
@@ -224,8 +224,8 @@ fn both_parts_delta_independent() {
     let td2 = make_td("Dec", &[("Price", make_dec(-3, 5000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-3, 5000));
@@ -261,7 +261,7 @@ fn both_parts_delta_sequence() {
             bytes
         );
 
-        let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+        let (tpl, _) = dec.parse(&bytes).unwrap();
         let d = get_decimal(&tpl, "Price");
         assert_eq!(d.exponent, p.exponent, "msg{} exponent", i + 1);
         assert_eq!(d.mantissa, p.mantissa, "msg{} mantissa", i + 1);
@@ -302,9 +302,9 @@ fn exponent_increment() {
     eprintln!("Exp inc: msg2={} bytes {:02x?}", bytes2.len(), bytes2);
     eprintln!("Exp inc: msg3={} bytes {:02x?}", bytes3.len(), bytes3);
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
-    let (tpl3, _) = dec.decode_raw(&bytes3).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
+    let (tpl3, _) = dec.parse(&bytes3).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-1, 10000));
@@ -332,8 +332,8 @@ fn exponent_increment_gap_writes() {
     let td2 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-4, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-2, 10000));
@@ -364,8 +364,8 @@ fn exponent_default_value_omits() {
     let td2 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-2, 10000));
@@ -388,7 +388,7 @@ fn exponent_default_non_default_writes() {
     let td = make_td("Dec", &[("Price", make_dec(-4, 10000))]);
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let d = get_decimal(&tpl, "Price");
     assert_eq!(d.exponent, -4);
     assert_eq!(d.mantissa, 10000);
@@ -415,7 +415,7 @@ fn mantissa_default_value_omits() {
     let td = make_td("Dec", &[("Price", make_dec(-2, 0))]);
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let d = get_decimal(&tpl, "Price");
     assert_eq!(d.exponent, -2);
     assert_eq!(d.mantissa, 0);
@@ -437,7 +437,7 @@ fn mantissa_default_non_default_writes() {
     let td = make_td("Dec", &[("Price", make_dec(-2, 42))]);
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let d = get_decimal(&tpl, "Price");
     assert_eq!(d.exponent, -2);
     assert_eq!(d.mantissa, 42);
@@ -487,8 +487,8 @@ fn exponent_copy_with_dictionary_key() {
     );
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price1"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl1, "Price2"), Decimal::new(-4, 5000));
@@ -528,9 +528,9 @@ fn exponent_copy_isolated_across_templates() {
     let td3 = make_td("Bid", &[("Price", make_dec(-2, 10010))]);
     let bytes3 = enc.encode_template_data(td3).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
-    let (tpl3, _) = dec.decode_raw(&bytes3).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
+    let (tpl3, _) = dec.parse(&bytes3).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl2, "Price"), Decimal::new(-4, 20000));
@@ -557,7 +557,7 @@ fn optional_decimal_with_parts_present() {
     let td = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     let d = get_decimal(&tpl, "Price");
     assert_eq!(d.exponent, -2);
     assert_eq!(d.mantissa, 10000);
@@ -587,7 +587,7 @@ fn optional_decimal_with_parts_absent() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     if let ValueData::Group(ref g) = tpl.value {
         assert!(
             matches!(g.get("Price"), Some(ValueData::Value(None))),
@@ -632,8 +632,8 @@ fn optional_decimal_with_parts_present_then_absent() {
     );
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     if let ValueData::Group(ref g) = tpl2.value {
@@ -668,8 +668,8 @@ fn exponent_constant_fixed_exponent() {
     let td2 = make_td("Dec", &[("Price", make_dec(-2, 20000))]);
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let (tpl1, _) = dec.decode_raw(&bytes1).unwrap();
-    let (tpl2, _) = dec.decode_raw(&bytes2).unwrap();
+    let (tpl1, _) = dec.parse(&bytes1).unwrap();
+    let (tpl2, _) = dec.parse(&bytes2).unwrap();
 
     // Both should have exponent=-2 (constant)
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
@@ -700,7 +700,7 @@ fn exponent_constant_multiple_decimals() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let (tpl, _) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(*get_decimal(&tpl, "Bid"), Decimal::new(-2, 10000));
     assert_eq!(*get_decimal(&tpl, "Ask"), Decimal::new(-2, 10050));
 }
@@ -817,7 +817,7 @@ fn exponent_copy_mantissa_delta_multi_message() {
     // Decode all ticks
     let mut offset = 0;
     for (i, (expected_seq, expected_price)) in ticks.iter().enumerate() {
-        let (tpl, consumed) = dec.decode_raw(&all_bytes[offset..]).unwrap();
+        let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
         offset += consumed as usize;
 
         if let ValueData::Group(ref g) = tpl.value {
@@ -851,7 +851,7 @@ fn roundtrip_single(xml: &str, td: TemplateData) -> TemplateData {
     let mut enc = FastEncoder::new(xml).unwrap();
     let mut dec = FastDecoder::new(xml).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
-    let (tpl, consumed) = dec.decode_raw(&bytes).unwrap();
+    let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len());
     tpl
 }
