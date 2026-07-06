@@ -109,6 +109,18 @@ impl TemplateData {
             None
         }
     }
+
+    /// Deserialize this `TemplateData` into a typed struct `T`.
+    ///
+    /// Convenience wrapper around `serde::Deserialize::deserialize(self)` so
+    /// you can write `td.decode::<Tick>()?` instead of
+    /// `serde::Deserialize::deserialize(td)?`.
+    pub fn decode<T>(self) -> Result<T, Error>
+    where
+        T: serde::Deserialize<'static>,
+    {
+        serde::Deserialize::deserialize(self)
+    }
 }
 
 impl<'de> serde::Deserializer<'de> for TemplateData {

@@ -1,6 +1,6 @@
 [package]
 name = "superfast"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Sunding Wei <weisunding@gmail.com>"]
 description = "FAST protocol encoder/decoder for Rust"

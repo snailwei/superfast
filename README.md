@@ -343,11 +343,11 @@ let (td, consumed): (TemplateData, usize) = decoder.parse(buffer)?;
 // Inspect the template name to dispatch
 match td.name.as_str() {
     "NGTSTick" => {
-        let msg: NgtsTick = serde::Deserialize::deserialize(td)?;
+        let msg: NgtsTick = td.decode()?;
         handle_tick(&msg);
     }
     "XtsTick" => {
-        let msg: XtsTick = serde::Deserialize::deserialize(td)?;
+        let msg: XtsTick = td.decode()?;
         handle_xts_tick(&msg);
     }
     _ => {} // unknown template
@@ -413,7 +413,7 @@ fn main() {
     assert_eq!(td.get_i32("Price"), Some(531));
 
     // Step 3: deserialize into the known struct type
-    let decoded: Tick = serde::Deserialize::deserialize(td).unwrap();
+    let decoded: Tick = td.decode().unwrap();
     assert_eq!(decoded, msg);
 }
 ```

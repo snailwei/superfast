@@ -278,7 +278,7 @@ fn main() -> superfast::Result<()> {
     assert_eq!(td.get_i64("Qty"), Some(100_000));
 
     // Step 3: deserialize into the known struct type
-    let decoded_tick: Tick = serde::Deserialize::deserialize(td)?;
+    let decoded_tick: Tick = td.decode()?;
     assert_eq!(decoded_tick, tick);
     println!(
         "Parse + deserialize: {} price={} qty={}",
