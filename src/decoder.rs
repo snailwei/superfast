@@ -83,7 +83,8 @@ impl FastDecoder {
     where
         T: serde::de::Deserialize<'static>,
     {
-        let (msg, consumed) = self.decode_one(buffer)?;
+        let (data, consumed) = self.parse(buffer)?;
+        let msg = T::deserialize(data).map_err(|e| Error::Runtime(e.to_string()))?;
         Ok((msg, consumed as u64))
     }
 
@@ -126,16 +127,7 @@ impl FastDecoder {
         Ok((data, consumed))
     }
 
-    /// Internal: decode one message from a byte slice, returning (message, bytes_consumed).
-    fn decode_one<T>(&mut self, bytes: &[u8]) -> Result<(T, usize)>
-    where
-        T: serde::de::Deserialize<'static>,
-    {
-        let (data, consumed) = self.parse(bytes)?;
-        let msg = T::deserialize(data).map_err(|e| Error::Runtime(e.to_string()))?;
-        Ok((msg, consumed))
     }
-}
 
 /// Processing context for a single message decode.
 pub(crate) struct DecoderContext<'a> {
