@@ -7,8 +7,10 @@ SuperFAST takes an XML template definition and binary data, then deserializes th
 This library is a full implementation of the **[FAST Specification Version 1.1](./spec/FAST-Specification-1-x-1.pdf)**.
 
 ```rust
+use superfast::Dictionary;
+
 // That's it — three lines to decode a FAST message
-let mut dec = FastDecoder::new(&xml)?;
+let mut dec = FastDecoder::new(&xml, Dictionary::Global)?;
 let (msg, consumed): (MarketData, u64) = dec.decode(buffer)?;
 println!("symbol: {}, bid: {}", msg.symbol, msg.bid_price);
 ```
@@ -109,11 +111,11 @@ struct MarketData {
 ### 3. Decode
 
 ```rust
-use superfast::FastDecoder;
+use superfast::{Dictionary, FastDecoder};
 
 const SCHEMA: &str = include_str!("schema.xml");
 
-let mut decoder = FastDecoder::new(SCHEMA)?;
+let mut decoder = FastDecoder::new(SCHEMA, Dictionary::Global)?;
 
 // Decode from a buffer — returns (message, bytes_consumed)
 let (msg, consumed): (MarketData, u64) = decoder.decode(buffer)?;
@@ -124,11 +126,11 @@ println!("{} @ {:.2}",
 ### 4. Encode
 
 ```rust
-use superfast::{FastEncoder, decimal::Decimal};
+use superfast::{Dictionary, FastEncoder, decimal::Decimal};
 
 const SCHEMA: &str = include_str!("schema.xml");
 
-let mut encoder = FastEncoder::new(SCHEMA)?;
+let mut encoder = FastEncoder::new(SCHEMA, Dictionary::Global)?;
 
 let msg = MarketData {
     symbol: "AAPL".to_string(),
@@ -312,8 +314,10 @@ println!("{} * 10^{}", d.mantissa, d.exponent);
 Stateful operators (`copy`, `increment`, `tail`, `delta`) maintain context between messages. Reuse the same `FastDecoder`/`FastEncoder` instance across calls:
 
 ```rust
-let mut decoder = FastDecoder::new(xml)?;
-let mut encoder = FastEncoder::new(xml)?;
+use superfast::Dictionary;
+
+let mut decoder = FastDecoder::new(xml, Dictionary::Global)?;
+let mut encoder = FastEncoder::new(xml, Dictionary::Global)?;
 
 // First message — full payload
 let bytes1 = encoder.encode(&msg1)?;
@@ -392,8 +396,10 @@ struct Tick {
 }
 
 fn main() {
-    let mut enc = FastEncoder::new(SCHEMA).unwrap();
-    let mut dec = FastDecoder::new(SCHEMA).unwrap();
+    use superfast::Dictionary;
+
+    let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global).unwrap();
 
     // Encode a tick
     let msg = Tick {
