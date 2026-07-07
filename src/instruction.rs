@@ -50,7 +50,7 @@ impl Instruction {
             operator: Operator::None,
             initial_value: None,
             instructions: Vec::new(),
-            dictionary: Dictionary::Inherit,
+            dictionary: Dictionary::Global,
             type_ref: TypeRef::Any,
             key: Rc::from(ky),
             has_pmap: Cell::new(false),
@@ -976,6 +976,24 @@ impl Instruction {
             Ok(Some((e, m)))
         } else {
             Err(Error::Runtime("exponent or mantissa not found".to_string()))
+        }
+    }
+
+    /// Resolve dictionary inheritance per the FAST spec: each operator inherits its
+/// `dictionary` attribute from the nearest element ancestor.  This walks the
+/// instruction tree and replaces `Dictionary::Global` (the un-set default) with
+/// the parent element's dictionary so that children of a template/group/sequence
+/// with a non-global dictionary are properly isolated.
+    pub(crate) fn propagate_dictionary(&mut self, parent_dict: &Dictionary) {
+        // If this instruction doesn't have an explicit dictionary (still Global
+        // default), inherit from parent.
+        if self.dictionary == Dictionary::Global && *parent_dict != Dictionary::Global {
+            self.dictionary = parent_dict.clone();
+        }
+        // Recurse into child instructions (groups, sequences, decimal parts)
+        let dict = self.dictionary.clone();
+        for child in &mut self.instructions {
+            child.propagate_dictionary(&dict);
         }
     }
 

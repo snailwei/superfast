@@ -46,13 +46,40 @@ impl Presence {
     }
 }
 
-/// Dictionary scope for state storage.
+/// Dictionary scope for operator state storage (FAST spec §4.1).
+///
+/// Named dictionaries store the previous values used by stateful operators
+/// (copy, increment, delta, tail).  Each operator inherits its `dictionary`
+/// attribute from the nearest ancestor element; if no ancestor specifies one,
+/// the global dictionary is used.
+///
+/// | Variant | XML value | Scope |
+/// |---|---|---|
+/// | `Global` | `global` | Shared across all templates (spec default) |
+/// | `Template` | `template` | Isolated per template |
+/// | `Type` | `type` | Isolated per application `typeRef` |
+/// | `UserDefined` | custom string | Isolated by named dictionary |
+///
+/// # Examples
+///
+/// ```ignore
+/// use superfast::{Dictionary, FastEncoder};
+///
+/// // Single-template workload — share state across messages (spec default)
+/// let enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+///
+/// // Multi-template workload — isolate state per template
+/// let enc = FastEncoder::new(xml, Dictionary::Template).unwrap();
+/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub enum Dictionary {
-    Inherit,
+    /// Shared across all templates (spec default).
     Global,
+    /// Isolated per template — prevents cross-template state pollution.
     Template,
+    /// Isolated per application `typeRef`.
     Type,
+    /// Isolated by custom named dictionary (e.g., `dictionary="symDict"`).
     UserDefined(Rc<str>),
 }
 

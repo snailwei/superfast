@@ -25,9 +25,32 @@ pub struct FastEncoder {
 }
 
 impl FastEncoder {
-    pub fn new(text: &str) -> Result<Self> {
+    /// Parse XML template definitions and create an encoder.
+    ///
+    /// The `default_dict` parameter sets the dictionary scope for templates
+    /// whose XML does not specify a `dictionary` attribute. See [`Dictionary`]
+    /// for the meaning of each scope.
+    ///
+    /// Use [`Dictionary::Global`] for single-template workloads (spec default).
+    /// Use [`Dictionary::Template`] for multi-template workloads where different
+    /// message types share field names and global state would cause cross-template
+    /// pollution (e.g., market-data feeds).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use superfast::{Dictionary, FastEncoder};
+    ///
+    /// let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    /// let bytes = enc.encode(&message)?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Static`] if the XML is malformed or semantically invalid.
+    pub fn new(text: &str, default_dict: Dictionary) -> Result<Self> {
         Ok(Self {
-            definitions: Definitions::new(text)?,
+            definitions: Definitions::new(text, default_dict)?,
             context: Context::new(),
         })
     }
@@ -35,20 +58,6 @@ impl FastEncoder {
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn reset(&mut self) {
         self.context.reset();
-    }
-
-    /// Like [`Self::new`] but, when `template_dict` is `true`, sets all
-    /// templates to `Dictionary::Template` instead of `Dictionary::Global`,
-    /// isolating copy-operator state per template.
-    pub fn new_with_template_dict(text: &str) -> Result<Self> {
-        Self::new_from_xml(text, true)
-    }
-
-    pub(crate) fn new_from_xml(text: &str, template_dict: bool) -> Result<Self> {
-        Ok(Self {
-            definitions: Definitions::new_from_xml(text, template_dict)?,
-            context: Context::new(),
-        })
     }
 
     /// Encode a `serde::Serialize` value into FAST binary bytes.
@@ -648,11 +657,9 @@ impl<'a> EncoderContext<'a> {
 
     #[inline]
     fn push_context(&mut self, dictionary: Dictionary, type_ref: TypeRef) {
-        if dictionary != Dictionary::Inherit {
-            self.saved_dictionary
-                .push(std::mem::replace(&mut self.dictionary, dictionary));
-            self.dictionary_depth += 1;
-        }
+        self.saved_dictionary
+            .push(std::mem::replace(&mut self.dictionary, dictionary));
+        self.dictionary_depth += 1;
         if type_ref != TypeRef::Any {
             self.saved_type_ref
                 .push(std::mem::replace(&mut self.type_ref, type_ref));
@@ -674,14 +681,10 @@ impl<'a> EncoderContext<'a> {
 
     #[inline]
     fn push_dict(&mut self, dictionary: Dictionary) -> bool {
-        if dictionary == Dictionary::Inherit {
-            false
-        } else {
-            self.saved_dictionary
-                .push(std::mem::replace(&mut self.dictionary, dictionary));
-            self.dictionary_depth += 1;
-            true
-        }
+        self.saved_dictionary
+            .push(std::mem::replace(&mut self.dictionary, dictionary));
+        self.dictionary_depth += 1;
+        true
     }
 
     #[inline]
@@ -692,7 +695,6 @@ impl<'a> EncoderContext<'a> {
 
     fn make_dict_type(&self) -> DictionaryType {
         match self.dictionary {
-            Dictionary::Inherit => unreachable!(),
             Dictionary::Global => DictionaryType::Global,
             Dictionary::Template => DictionaryType::Template(self.template_id),
             Dictionary::Type => {

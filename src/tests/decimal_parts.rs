@@ -10,7 +10,7 @@ use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 // ============================================================
@@ -38,8 +38,8 @@ fn make_td(name: &str, fields: &[(&str, ValueData)]) -> TemplateData {
 }
 
 fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
@@ -76,7 +76,7 @@ fn exponent_copy_unchanged_omits() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2, mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -111,8 +111,8 @@ fn exponent_copy_changed_writes() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2, mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -149,8 +149,8 @@ fn mantissa_copy_unchanged_omits() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2, mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -182,8 +182,8 @@ fn mantissa_copy_changed_writes() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes1 = enc.encode_template_data(td1).unwrap();
@@ -213,8 +213,8 @@ fn both_parts_delta_independent() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2, mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -242,8 +242,8 @@ fn both_parts_delta_sequence() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let prices = [
         Decimal::new(-2, 10000),
@@ -282,8 +282,8 @@ fn exponent_increment() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2, mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -322,8 +322,8 @@ fn exponent_increment_gap_writes() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td1 = make_td("Dec", &[("Price", make_dec(-4, 10000))]);
     let bytes1 = enc.encode_template_data(td1).unwrap();
@@ -353,8 +353,8 @@ fn exponent_default_value_omits() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: exponent=-2 (default), mantissa=10000
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
@@ -381,8 +381,8 @@ fn exponent_default_non_default_writes() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Exponent differs from default — must be written
     let td = make_td("Dec", &[("Price", make_dec(-4, 10000))]);
@@ -408,8 +408,8 @@ fn mantissa_default_value_omits() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Mantissa = 0 (default)
     let td = make_td("Dec", &[("Price", make_dec(-2, 0))]);
@@ -431,8 +431,8 @@ fn mantissa_default_non_default_writes() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td("Dec", &[("Price", make_dec(-2, 42))]);
     let bytes = enc.encode_template_data(td).unwrap();
@@ -464,8 +464,8 @@ fn exponent_copy_with_dictionary_key() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Price1=(-2, 10000), Price2=(-4, 5000)
     let td1 = make_td(
@@ -513,8 +513,8 @@ fn exponent_copy_isolated_across_templates() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Bid: exponent=-2
     let td1 = make_td("Bid", &[("Price", make_dec(-2, 10000))]);
@@ -551,8 +551,8 @@ fn optional_decimal_with_parts_present() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes = enc.encode_template_data(td).unwrap();
@@ -574,8 +574,8 @@ fn optional_decimal_with_parts_absent() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Price absent
     let td = make_td(
@@ -609,8 +609,8 @@ fn optional_decimal_with_parts_present_then_absent() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Price present
     let td1 = make_td(
@@ -659,8 +659,8 @@ fn exponent_constant_fixed_exponent() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td1 = make_td("Dec", &[("Price", make_dec(-2, 10000))]);
     let bytes1 = enc.encode_template_data(td1).unwrap();
@@ -691,8 +691,8 @@ fn exponent_constant_multiple_decimals() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "Quote",
@@ -720,7 +720,7 @@ fn decimal_exponent_without_mantissa_errors() {
   </template>
 </templates>"#;
 
-    let result = FastEncoder::new(xml);
+    let result = FastEncoder::new(xml, Dictionary::Global);
     assert!(
         result.is_err(),
         "Should error when <exponent> is provided without <mantissa>"
@@ -738,7 +738,7 @@ fn decimal_mantissa_without_exponent_errors() {
   </template>
 </templates>"#;
 
-    let result = FastEncoder::new(xml);
+    let result = FastEncoder::new(xml, Dictionary::Global);
     assert!(
         result.is_err(),
         "Should error when <mantissa> is provided without <exponent>"
@@ -758,7 +758,7 @@ fn decimal_operator_and_parts_mixed_errors() {
   </template>
 </templates>"#;
 
-    let result = FastEncoder::new(xml);
+    let result = FastEncoder::new(xml, Dictionary::Global);
     assert!(
         result.is_err(),
         "Should error when decimal-level operator is mixed with <exponent>/<mantissa>"
@@ -781,8 +781,8 @@ fn exponent_copy_mantissa_delta_multi_message() {
     </decimal>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let ticks = [
         (1, Decimal::new(-2, 10000)),
@@ -848,8 +848,8 @@ fn exponent_copy_mantissa_delta_multi_message() {
 
 #[allow(dead_code)]
 fn roundtrip_single(xml: &str, td: TemplateData) -> TemplateData {
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len());

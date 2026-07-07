@@ -5,7 +5,7 @@
 
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Option<u32> {
@@ -54,12 +54,12 @@ fn increment_absent_with_initial_increments() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5 → absent
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Undefined context + initial_value=10 → increment(10) = 11
@@ -85,12 +85,12 @@ fn increment_loose_d5_uses_type_default() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     dec.set_strict(false);
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
@@ -114,8 +114,8 @@ fn increment_chain_present_then_absent() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Seq = 100 (present)
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(100))));
@@ -144,12 +144,12 @@ fn increment_optional_undefined_uses_initial() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     // Optional + initial_value=Some(0): initial value takes precedence
@@ -173,8 +173,8 @@ fn increment_sequence_absent() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Seq = 5
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(5))));
@@ -204,7 +204,7 @@ fn tail_err_d5_mandatory_no_initial() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",
@@ -216,7 +216,7 @@ fn tail_err_d5_mandatory_no_initial() {
     let mut bytes = bytes.clone();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Expected ERR D5");
@@ -236,7 +236,7 @@ fn tail_loose_d5_uses_type_default() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",
@@ -245,7 +245,7 @@ fn tail_loose_d5_uses_type_default() {
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     dec.set_strict(false);
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
@@ -269,7 +269,7 @@ fn tail_initial_value_on_undefined() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",
@@ -278,7 +278,7 @@ fn tail_initial_value_on_undefined() {
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     assert_eq!(
@@ -300,8 +300,8 @@ fn tail_chain_present_then_absent() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Txt = "ABCDE" (present, establishes base)
     let td = make_td(
@@ -337,7 +337,7 @@ fn tail_optional_undefined_returns_none() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",
@@ -346,7 +346,7 @@ fn tail_optional_undefined_returns_none() {
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     assert!(
@@ -367,8 +367,8 @@ fn tail_present_truncates_and_appends() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Txt = "ABCDEFGHIJ" (full, establishes base)
     let td = make_td(
@@ -404,8 +404,8 @@ fn tail_empty_state_uses_initial_as_base() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: NULL (sets previous state to "empty")
     let td = make_td("T", "Txt", ValueData::Value(None));
@@ -445,12 +445,12 @@ fn copy_strict_regression() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Copy: expected ERR D5 in strict mode");

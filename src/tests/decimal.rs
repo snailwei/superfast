@@ -2,8 +2,7 @@
 //!
 //! Covers parsing, formatting, float conversion, and wire format roundtrips.
 
-use crate::FastDecoder;
-use crate::FastEncoder;
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
@@ -225,8 +224,8 @@ fn decimal_display() {
 #[test]
 fn decimal_roundtrip_mandatory() {
     let xml = decimal_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "DecTest",
@@ -252,8 +251,8 @@ fn decimal_roundtrip_mandatory() {
 #[test]
 fn decimal_roundtrip_positive_exponent() {
     let xml = decimal_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "DecTest",
@@ -279,8 +278,8 @@ fn decimal_roundtrip_positive_exponent() {
 #[test]
 fn decimal_roundtrip_negative_value() {
     let xml = decimal_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "DecTest",
@@ -306,8 +305,8 @@ fn decimal_roundtrip_negative_value() {
 #[test]
 fn decimal_roundtrip_zero() {
     let xml = decimal_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "DecTest",
@@ -333,8 +332,8 @@ fn decimal_roundtrip_zero() {
 #[test]
 fn decimal_roundtrip_optional_absent() {
     let xml = decimal_xml(true);
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td("DecTest", ValueData::Value(None));
     let bytes = enc.encode_template_data(td).unwrap();
@@ -358,7 +357,7 @@ fn decimal_wire_format_spec_example() {
     // FAST spec example: 94275500 = 942755 × 10²
     // exponent: 0x82 (2)  mantissa: 0x39 0x45 0xA3 (942755)
     let xml = decimal_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "DecTest",
@@ -401,7 +400,7 @@ fn f64_field_rejected() {
   </template>
 </templates>"#;
 
-    let mut enc = crate::FastEncoder::new(xml).unwrap();
+    let mut enc = crate::FastEncoder::new(xml, Dictionary::Global).unwrap();
     let msg = DecTestF64 { price: 9427.55 };
     let result = enc.encode(&msg);
     assert!(result.is_err());
@@ -427,7 +426,7 @@ fn f32_field_rejected() {
   </template>
 </templates>"#;
 
-    let mut enc = crate::FastEncoder::new(xml).unwrap();
+    let mut enc = crate::FastEncoder::new(xml, Dictionary::Global).unwrap();
     let msg = DecTestF32 { price: 9427.55 };
     let result = enc.encode(&msg);
     assert!(result.is_err());

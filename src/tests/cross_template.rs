@@ -3,7 +3,7 @@
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn v(s: &str) -> ValueData {
@@ -53,7 +53,7 @@ struct X {
 /// Global dict: Txn overwrites Tick's copy context in the encoder.
 #[test]
 fn global_dict_pollutes_encoder() {
-    let mut enc = FastEncoder::new(two_xml()).unwrap();
+    let mut enc = FastEncoder::new(two_xml(), Dictionary::Global).unwrap();
     let t1 = enc
         .encode_template_data(td("Tick", "Sym", v("AAPL")))
         .unwrap();
@@ -74,7 +74,7 @@ fn global_dict_pollutes_encoder() {
 /// Template dict: Txn cannot pollute Tick's copy context in the encoder.
 #[test]
 fn template_dict_isolates_encoder() {
-    let mut enc = FastEncoder::new_with_template_dict(two_xml()).unwrap();
+    let mut enc = FastEncoder::new(two_xml(), Dictionary::Template).unwrap();
     let t1 = enc
         .encode_template_data(td("Tick", "Sym", v("AAPL")))
         .unwrap();
@@ -89,8 +89,8 @@ fn template_dict_isolates_encoder() {
 /// Decoder: with template dict, Txn doesn't corrupt Tick copy state.
 #[test]
 fn template_dict_isolates_decoder() {
-    let mut enc = FastEncoder::new_with_template_dict(two_xml()).unwrap();
-    let mut dec = FastDecoder::new_with_template_dict(two_xml()).unwrap();
+    let mut enc = FastEncoder::new(two_xml(), Dictionary::Template).unwrap();
+    let mut dec = FastDecoder::new(two_xml(), Dictionary::Template).unwrap();
 
     let t1 = enc
         .encode_template_data(td("Tick", "Sym", v("AAPL")))
@@ -132,8 +132,8 @@ fn template_dict_isolates_decoder() {
 /// Decoder: with global dict, Txn DOES corrupt Tick copy state.
 #[test]
 fn global_dict_pollutes_decoder() {
-    let mut enc = FastEncoder::new_with_template_dict(two_xml()).unwrap();
-    let mut dec = FastDecoder::new(two_xml()).unwrap(); // global dict
+    let mut enc = FastEncoder::new(two_xml(), Dictionary::Template).unwrap();
+    let mut dec = FastDecoder::new(two_xml(), Dictionary::Global).unwrap();
 
     let t1 = enc
         .encode_template_data(td("Tick", "Sym", v("AAPL")))

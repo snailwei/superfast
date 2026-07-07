@@ -1,6 +1,6 @@
 /// Our decoder strips `<typeRef>` elements from the XML template,
 /// allowing templates that extend base templates to be parsed.
-use crate::FastDecoder;
+use crate::{Dictionary, FastDecoder};
 
 #[test]
 fn typeref_stripped() {
@@ -15,5 +15,5 @@ fn typeref_stripped() {
 
     // After stripping typeRef, the remaining template parses successfully.
     let stripped = xml.replace("<typeRef name=\"Base\" />", "");
-    FastDecoder::new(&stripped).expect("typeRef stripped, remaining template parses");
+    FastDecoder::new(&stripped, Dictionary::Global).expect("typeRef stripped, remaining template parses");
 }

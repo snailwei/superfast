@@ -12,8 +12,7 @@
 //! delta   ::= IntegerDelta | ScaledNumberDelta | ASCIIStringDelta | ByteVectorDelta
 //! ```
 
-use crate::FastDecoder;
-use crate::FastEncoder;
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
@@ -34,8 +33,8 @@ fn make_td(name: &str, field: &str, value: ValueData) -> TemplateData {
 }
 
 fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len(), "decoder did not consume all bytes");
@@ -468,7 +467,7 @@ fn bytevector_optional_absent() {
 fn delta_integer_basic() {
     let xml = delta_int_xml();
     // First message: delta from default (0)
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DeltaTest",
         "Val",
@@ -484,7 +483,7 @@ fn delta_integer_basic() {
     let bytes2 = enc.encode_template_data(td).unwrap();
 
     // Decode both with same decoder
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         get_field(&tpl, "Val"),
@@ -500,7 +499,7 @@ fn delta_integer_basic() {
 #[test]
 fn delta_string_basic() {
     let xml = delta_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     // First: full string (base is empty default)
     let td = make_td(
         "DeltaStrTest",
@@ -516,7 +515,7 @@ fn delta_string_basic() {
     );
     let bytes2 = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         get_field(&tpl, "Txt"),
@@ -532,14 +531,14 @@ fn delta_string_basic() {
 #[test]
 fn delta_bytevector_basic() {
     let xml = delta_bv_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DeltaBVTest",
         "Data",
         ValueData::Value(Some(Value::Bytes(vec![0x41, 0x42, 0x43]))),
     );
     let bytes = enc.encode_template_data(td).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (tpl, _consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
         *get_field(&tpl, "Data"),
@@ -551,7 +550,7 @@ fn delta_bytevector_basic() {
 fn delta_decimal_basic() {
     use crate::decimal::Decimal;
     let xml = delta_decimal_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DeltaDecTest",
         "Price",
@@ -566,7 +565,7 @@ fn delta_decimal_basic() {
     );
     let bytes2 = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (tpl, _) = dec.parse(&bytes).unwrap();
     assert_eq!(
         *get_field(&tpl, "Price"),
@@ -587,7 +586,7 @@ fn delta_decimal_basic() {
 fn wire_format_signed_int_942755() {
     // Spec example: 942755 -> 0x39 0x45 0xA3
     let xml = int_xml("int32", false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "IntTest",
         "Val",
@@ -605,7 +604,7 @@ fn wire_format_signed_int_942755() {
 fn wire_format_signed_int_64_sign_extension() {
     // Spec example: +64 requires sign-bit extension -> 0x00 0xC0
     let xml = int_xml("int32", false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::Int32(64))));
     let bytes = enc.encode_template_data(td).unwrap();
     assert!(
@@ -619,7 +618,7 @@ fn wire_format_signed_int_64_sign_extension() {
 fn wire_format_ascii_abc() {
     // Spec example: "ABC" -> 0x41 0x42 0xC3
     let xml = ascii_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "StrTest",
         "Txt",
@@ -637,7 +636,7 @@ fn wire_format_ascii_abc() {
 fn wire_format_bytevector_abc() {
     // Spec example: [0x41, 0x42, 0x43] -> length 0x83 + data 0x41 0x42 0x43
     let xml = bytevector_xml(false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "BVTest",
         "Data",
@@ -662,7 +661,7 @@ fn wire_format_decimal_spec_example() {
   </template>
 </templates>"#
         .to_string();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     use crate::decimal::Decimal;
     let td = make_td(
         "DecTest",
@@ -691,7 +690,7 @@ fn wire_format_decimal_spec_example() {
 #[test]
 fn block_single_message() {
     let xml = int_xml("uInt32", false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(42))));
     let msg = enc.encode_template_data(td).unwrap();
 
@@ -710,7 +709,7 @@ fn block_single_message() {
         "block contains exactly the message"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (tpl, consumed) = dec.parse(data).unwrap();
     assert_eq!(
         consumed as usize,
@@ -729,7 +728,7 @@ fn block_multiple_messages() {
     let values = [100u32, 200, 300];
     let mut msgs = Vec::new();
     for &v in &values {
-        let mut enc = FastEncoder::new(&xml).unwrap();
+        let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
         let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(v))));
         msgs.push(enc.encode_template_data(td).unwrap());
     }
@@ -749,7 +748,7 @@ fn block_multiple_messages() {
     assert_eq!(data.len(), size as usize);
 
     // Decode all 3 messages from the block data
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let mut offset = 0;
     for (i, &expected) in values.iter().enumerate() {
         let (tpl, consumed) = dec.parse(&data[offset..]).unwrap();
@@ -776,7 +775,7 @@ fn block_zero_size_error() {
 fn block_message_boundary() {
     // A partial message at the block boundary should not decode
     let xml = int_xml("uInt32", false);
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(99))));
     let msg = enc.encode_template_data(td).unwrap();
 
@@ -793,7 +792,7 @@ fn block_message_boundary() {
     assert_eq!(data.len(), size as usize);
 
     // Decoding the partial message should fail
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     assert!(
         dec.parse(data).is_err(),
         "partial message should fail to decode"
@@ -807,7 +806,7 @@ fn block_size_multibyte() {
     let values: Vec<u32> = (0..50).map(|i| i * 100).collect();
     let mut msgs = Vec::new();
     for &v in &values {
-        let mut enc = FastEncoder::new(&xml).unwrap();
+        let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
         let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(v))));
         msgs.push(enc.encode_template_data(td).unwrap());
     }
@@ -841,13 +840,13 @@ fn stream_bare_messages() {
     let values = [10u32, 20, 30, 40, 50];
     let mut all_bytes = Vec::new();
     for &v in &values {
-        let mut enc = FastEncoder::new(&xml).unwrap();
+        let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
         let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(v))));
         all_bytes.extend(enc.encode_template_data(td).unwrap());
     }
 
     // Decode all messages from the stream
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let mut offset = 0usize;
     for (i, &expected) in values.iter().enumerate() {
         let (tpl, consumed) = dec.parse(&all_bytes[offset..]).unwrap();
@@ -870,7 +869,7 @@ fn stream_blocks() {
     // Build block 1: [2 messages]
     let mut block1_msgs = Vec::new();
     for &v in &[100u32, 200] {
-        let mut enc = FastEncoder::new(&xml).unwrap();
+        let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
         let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(v))));
         block1_msgs.push(enc.encode_template_data(td).unwrap());
     }
@@ -882,7 +881,7 @@ fn stream_blocks() {
     }
 
     // Build block 2: [1 message]
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("IntTest", "Val", ValueData::Value(Some(Value::UInt32(300))));
     let msg = enc.encode_template_data(td).unwrap();
     let mut block2 = Vec::new();
@@ -898,7 +897,7 @@ fn stream_blocks() {
     let mut pos = 0;
     let mut msg_count = 0;
     let expected = [100u32, 200, 300];
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     while pos < stream.len() {
         let (size, size_bytes) = decode_uint(&stream[pos..]).unwrap();
@@ -938,7 +937,7 @@ fn stream_mixed_types() {
         .to_string();
 
     let mut all_bytes = Vec::new();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     // IntMsg(42)
     let td = make_td("IntMsg", "Val", ValueData::Value(Some(Value::UInt32(42))));
@@ -957,7 +956,7 @@ fn stream_mixed_types() {
     all_bytes.extend(enc.encode_template_data(td).unwrap());
 
     // Decode all from stream
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let mut offset = 0;
 
     // Message 1: IntMsg(42)

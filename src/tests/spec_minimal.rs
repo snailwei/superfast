@@ -9,7 +9,7 @@ use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn make_val(v: Value) -> ValueData {
@@ -33,8 +33,8 @@ fn make_td(fields: &[(&str, ValueData)]) -> TemplateData {
 }
 
 fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
@@ -276,8 +276,8 @@ fn spec_minimal_first_message() {
 #[test]
 fn spec_minimal_second_message_compression() {
     let xml = spec_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // --- Message 1: establish context ---
     let seq1 = ValueData::Sequence(vec![ValueData::Group({
@@ -588,8 +588,8 @@ fn spec_minimal_copy_dictionary_isolation() {
     // Verify that Symbol copy state is isolated from SenderCompID copy state
     // (different dictionaries).
     let xml = spec_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // Message 1
     let header1 = ValueData::Group({

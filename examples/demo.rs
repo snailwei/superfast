@@ -4,7 +4,7 @@
 
 use superfast::decimal::Decimal;
 use superfast::model::template::TemplateData;
-use superfast::{FastDecoder, FastEncoder};
+use superfast::{Dictionary, FastDecoder, FastEncoder};
 
 // ---------------------------------------------------------------------------
 // 1. Embed Your XML Schema with `include_str!`
@@ -77,10 +77,10 @@ fn main() -> superfast::Result<()> {
     // -----------------------------------------------------------------------
     // 3. Decode — That's it, three lines to decode a FAST message
     // -----------------------------------------------------------------------
-    let mut dec = FastDecoder::new(SCHEMA)?;
+    let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global)?;
 
     // Encode a message first so we have bytes to decode (see step 4)
-    let mut enc = FastEncoder::new(SCHEMA)?;
+    let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global)?;
 
     let msg = MarketData {
         symbol: "AAPL".to_string(),
@@ -141,7 +141,7 @@ fn main() -> superfast::Result<()> {
     };
 
     let trade_bytes = enc.encode(&trade)?;
-    let (multi_msg, _): (Message, u64) = FastDecoder::new(SCHEMA)?.decode(&trade_bytes)?;
+    let (multi_msg, _): (Message, u64) = FastDecoder::new(SCHEMA, Dictionary::Global)?.decode(&trade_bytes)?;
     match multi_msg {
         Message::MarketData(m) => println!("market data: {}", m.symbol),
         Message::TradeCapture(t) => println!("trade: {} qty={}", t.symbol, t.quantity),
@@ -152,8 +152,8 @@ fn main() -> superfast::Result<()> {
     // -----------------------------------------------------------------------
     // Stateful operators (copy, increment, tail, delta) maintain context
     // between messages. Reuse the same encoder/decoder instance across calls.
-    let mut encoder = FastEncoder::new(SCHEMA)?;
-    let mut decoder = FastDecoder::new(SCHEMA)?;
+    let mut encoder = FastEncoder::new(SCHEMA, Dictionary::Global)?;
+    let mut decoder = FastDecoder::new(SCHEMA, Dictionary::Global)?;
 
     // First message — full payload
     let bytes1 = encoder.encode(&MarketData {
@@ -256,8 +256,8 @@ fn main() -> superfast::Result<()> {
         seq_num: Option<u64>,
     }
 
-    let mut tick_enc = FastEncoder::new(TICK_SCHEMA)?;
-    let mut tick_dec = FastDecoder::new(TICK_SCHEMA)?;
+    let mut tick_enc = FastEncoder::new(TICK_SCHEMA, Dictionary::Global)?;
+    let mut tick_dec = FastDecoder::new(TICK_SCHEMA, Dictionary::Global)?;
 
     // Encode a tick
     let tick = Tick {

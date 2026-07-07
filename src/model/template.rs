@@ -483,10 +483,10 @@ mod tests {
             turnover: Some(Decimal::new(-2, 942755)),
         };
 
-        let mut enc = FastEncoder::new(XML).unwrap();
+        let mut enc = FastEncoder::new(XML, crate::Dictionary::Global).unwrap();
         let bytes = enc.encode(&msg).unwrap();
 
-        let mut dec = FastDecoder::new(XML).unwrap();
+        let mut dec = FastDecoder::new(XML, crate::Dictionary::Global).unwrap();
         let (td, _consumed) = dec.parse(&bytes).expect("parse");
 
         assert_eq!(td.name, "Tick");

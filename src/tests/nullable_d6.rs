@@ -6,7 +6,7 @@
 
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn make_td(name: &str, field: &str, value: ValueData) -> crate::model::template::TemplateData {
@@ -58,8 +58,8 @@ fn copy_mandatory_nullable_err_d6() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "T",
@@ -96,8 +96,8 @@ fn copy_mandatory_nullable_err_d6_loose() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "T",
@@ -131,8 +131,8 @@ fn copy_mandatory_nullable_null_then_present() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "T",
@@ -177,8 +177,8 @@ fn copy_mandatory_nullable_int_err_d6() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Encode Seq=1, Txt="Hi"
     let td = make_td2(
@@ -242,8 +242,8 @@ fn nullable_distinct_from_optional() {
 </templates>"#;
 
     // Optional: two absent messages — no error
-    let mut enc = FastEncoder::new(xml_optional).unwrap();
-    let mut dec = FastDecoder::new(xml_optional).unwrap();
+    let mut enc = FastEncoder::new(xml_optional, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml_optional, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",
@@ -256,8 +256,8 @@ fn nullable_distinct_from_optional() {
     dec.parse(&absent).unwrap(); // No error for optional
 
     // Nullable: NULL then absent — ERR D6
-    let mut enc2 = FastEncoder::new(xml_nullable).unwrap();
-    let mut dec2 = FastDecoder::new(xml_nullable).unwrap();
+    let mut enc2 = FastEncoder::new(xml_nullable, Dictionary::Global).unwrap();
+    let mut dec2 = FastDecoder::new(xml_nullable, Dictionary::Global).unwrap();
     let td = make_td(
         "T",
         "Txt",

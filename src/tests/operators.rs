@@ -10,7 +10,7 @@
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn make_td(name: &str, field: &str, value: ValueData) -> TemplateData {
@@ -51,13 +51,13 @@ struct CopyTestMsg {
 #[test]
 fn copy_first_message_writes_value() {
     let xml = copy_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("CopyTest", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let bytes = enc.encode_template_data(td).unwrap();
 
     eprintln!("Copy first (42): {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (CopyMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         CopyMessage::CopyTest(m) => assert_eq!(m.seq, Some(42)),
@@ -67,7 +67,7 @@ fn copy_first_message_writes_value() {
 #[test]
 fn copy_unchanged_omits_field() {
     let xml = copy_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "CopyTest",
@@ -92,7 +92,7 @@ fn copy_unchanged_omits_field() {
         first.len()
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (CopyMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (CopyMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -106,8 +106,8 @@ fn copy_unchanged_omits_field() {
 #[test]
 fn copy_changed_writes_field() {
     let xml = copy_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "CopyTest",
@@ -139,7 +139,7 @@ fn copy_changed_writes_field() {
 #[test]
 fn copy_context_reset() {
     let xml = copy_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td("CopyTest", "Seq", ValueData::Value(Some(Value::UInt32(50))));
     enc.encode_template_data(td).unwrap();
@@ -149,7 +149,7 @@ fn copy_context_reset() {
     let td = make_td("CopyTest", "Seq", ValueData::Value(Some(Value::UInt32(50))));
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     dec.reset();
     let (msg, _): (CopyMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
@@ -178,11 +178,11 @@ fn copy_with_zero_value() {
         val: Option<u32>,
     }
 
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("CopyZero", "Val", ValueData::Value(Some(Value::UInt32(0))));
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (CopyZeroMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         CopyZeroMessage::CopyZero(m) => assert_eq!(m.val, Some(0)),
@@ -217,7 +217,7 @@ struct DefaultTestMsg {
 #[test]
 fn default_value_omits_field() {
     let xml = default_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultTest",
         "Status",
@@ -227,7 +227,7 @@ fn default_value_omits_field() {
 
     eprintln!("Default (value=0): {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultMessage::DefaultTest(m) => assert_eq!(m.status, Some(0)),
@@ -237,7 +237,7 @@ fn default_value_omits_field() {
 #[test]
 fn default_non_zero_writes_field() {
     let xml = default_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultTest",
         "Status",
@@ -245,7 +245,7 @@ fn default_non_zero_writes_field() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultMessage::DefaultTest(m) => assert_eq!(m.status, Some(5)),
@@ -255,7 +255,7 @@ fn default_non_zero_writes_field() {
 #[test]
 fn default_negative_value_writes_field() {
     let xml = default_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultTest",
         "Status",
@@ -263,7 +263,7 @@ fn default_negative_value_writes_field() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultMessage::DefaultTest(m) => assert_eq!(m.status, Some(-1)),
@@ -298,7 +298,7 @@ struct IncTestMsg {
 #[test]
 fn increment_first_message_writes_value() {
     let xml = increment_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "IncTest",
         "SeqNum",
@@ -308,7 +308,7 @@ fn increment_first_message_writes_value() {
 
     eprintln!("Inc first (10): {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (IncMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         IncMessage::IncTest(m) => assert_eq!(m.seq_num, Some(10)),
@@ -318,7 +318,7 @@ fn increment_first_message_writes_value() {
 #[test]
 fn increment_expected_omits_value() {
     let xml = increment_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "IncTest",
@@ -343,7 +343,7 @@ fn increment_expected_omits_value() {
         first.len()
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (IncMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (IncMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -357,8 +357,8 @@ fn increment_expected_omits_value() {
 #[test]
 fn increment_gap_writes_value() {
     let xml = increment_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "IncTest",
@@ -387,8 +387,8 @@ fn increment_gap_writes_value() {
 #[test]
 fn increment_sequence_roundtrip() {
     let xml = increment_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let mut all_bytes = Vec::new();
     for i in 1..=5u32 {
@@ -442,7 +442,7 @@ struct TailTestMsg {
 #[test]
 fn tail_first_message_writes_full() {
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "TailTest",
         "Txt",
@@ -452,7 +452,7 @@ fn tail_first_message_writes_full() {
 
     eprintln!("Tail first: {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (TailMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         TailMessage::TailTest(m) => assert_eq!(m.txt, Some("hello".to_string())),
@@ -462,7 +462,7 @@ fn tail_first_message_writes_full() {
 #[test]
 fn tail_unchanged_omits_field() {
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "TailTest",
@@ -485,7 +485,7 @@ fn tail_unchanged_omits_field() {
         "unchanged tail field should be shorter"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (TailMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (TailMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -499,8 +499,8 @@ fn tail_unchanged_omits_field() {
 #[test]
 fn tail_extended_writes_suffix_only() {
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "TailTest",
@@ -532,8 +532,8 @@ fn tail_extended_writes_suffix_only() {
 #[test]
 fn tail_completely_different_writes_full() {
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "TailTest",
@@ -563,8 +563,8 @@ fn tail_completely_different_writes_full() {
 fn tail_longer_than_base_returns_tail_value() {
     // §4.8: "If tail length ≥ base length, result = tail value"
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // Message 1: short base "ab" (2 chars)
     let td = make_td(
@@ -602,8 +602,8 @@ fn tail_longer_than_base_returns_tail_value() {
 fn tail_equal_length_full_replacement() {
     // §4.8 edge: tail_len == base_len — full replacement
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // Message 1: base "abc" (3 chars)
     let td = make_td(
@@ -633,8 +633,8 @@ fn tail_equal_length_full_replacement() {
 #[test]
 fn tail_with_empty_string() {
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "TailTest",
@@ -718,7 +718,7 @@ fn make_multi(seq: u32, status: i32, order: u32, symbol: &str) -> TemplateData {
 #[test]
 fn multi_field_all_compressed() {
     let xml = multi_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let first = enc
         .encode_template_data(make_multi(1, 0, 100, "AAPL"))
@@ -738,7 +738,7 @@ fn multi_field_all_compressed() {
         "all fields compressed should be shorter"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (MultiMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (MultiMessage, u64) = dec.decode(&second).unwrap();
 
@@ -757,8 +757,8 @@ fn multi_field_all_compressed() {
 #[test]
 fn multi_field_all_changed() {
     let xml = multi_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let first = enc
         .encode_template_data(make_multi(1, 0, 100, "AAPL"))
@@ -794,7 +794,7 @@ fn multi_field_all_changed() {
 fn copy_compression_size() {
     // 100 identical messages — first writes value, rest omit it
     let xml = copy_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let first = enc
         .encode_template_data(make_td(
@@ -830,7 +830,7 @@ fn increment_compression_size() {
     // 100 sequential increments — first writes value (doesn't match initial+1),
     // subsequent increments are omitted
     let xml = increment_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     // Start with 5 (not initial 0 + 1), so first message writes the value
     let first = enc
@@ -891,11 +891,11 @@ fn optional_field_present() {
         val: Option<u32>,
     }
 
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td("OptTest", "Val", ValueData::Value(Some(Value::UInt32(42))));
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (OptMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         OptMessage::OptTest(m) => assert_eq!(m.val, Some(42)),
@@ -923,7 +923,7 @@ fn optional_field_absent() {
         val: Option<u32>,
     }
 
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     // Don't include "Val" in the template data — it's absent
     let td = TemplateData {
         name: "OptTest".to_string(),
@@ -933,7 +933,7 @@ fn optional_field_absent() {
     let bytes = enc.encode_template_data(td).unwrap();
     eprintln!("Optional absent: {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (OptMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         OptMessage::OptTest(m) => assert_eq!(m.val, None),
@@ -948,7 +948,7 @@ fn optional_field_absent() {
 fn tail_compression_ratio() {
     // Long string that gets compressed by tail operator
     let xml = tail_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let td = make_td(
@@ -985,7 +985,7 @@ fn tail_compression_ratio() {
 fn multi_operator_compression() {
     // Realistic scenario: order book updates where most fields don't change
     let xml = multi_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     // Initial full snapshot
     let first = enc
@@ -1034,7 +1034,7 @@ struct TailUnicodeMsg {
 #[test]
 fn tail_unicode_first_writes_full() {
     let xml = tail_unicode_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "TailUnicode",
         "Txt",
@@ -1042,7 +1042,7 @@ fn tail_unicode_first_writes_full() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (TailUnicodeMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         TailUnicodeMessage::TailUnicode(m) => assert_eq!(m.txt, Some("hello".to_string())),
@@ -1052,7 +1052,7 @@ fn tail_unicode_first_writes_full() {
 #[test]
 fn tail_unicode_unchanged_omits() {
     let xml = tail_unicode_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "TailUnicode",
@@ -1073,7 +1073,7 @@ fn tail_unicode_unchanged_omits() {
         "unchanged unicode tail should be just pmap + tid"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (TailUnicodeMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (TailUnicodeMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -1118,7 +1118,7 @@ where
 #[test]
 fn tail_bytes_first_writes_full() {
     let xml = tail_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "TailBytes",
         "Data",
@@ -1126,7 +1126,7 @@ fn tail_bytes_first_writes_full() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (TailBytesMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         TailBytesMessage::TailBytes(m) => assert_eq!(m.data, Some(vec![0x01, 0x02, 0x03, 0xFF])),
@@ -1136,7 +1136,7 @@ fn tail_bytes_first_writes_full() {
 #[test]
 fn tail_bytes_unchanged_omits() {
     let xml = tail_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
     let td = make_td(
@@ -1158,7 +1158,7 @@ fn tail_bytes_unchanged_omits() {
         "unchanged bytes tail should be just pmap + tid"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (TailBytesMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (TailBytesMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -1173,8 +1173,8 @@ fn tail_bytes_unchanged_omits() {
 fn tail_bytes_suffix_replacement() {
     // Verify tail semantics: replace last N bytes where N = tail length
     let xml = tail_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // Base: [0x01, 0x02, 0x03, 0x04, 0x05] (5 bytes)
     let td = make_td(
@@ -1241,7 +1241,7 @@ struct ConstTestMsg {
 #[test]
 fn constant_mandatory_fields() {
     let xml = constant_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     // Constant fields don't need values in input — encoder uses schema constant
     let td = TemplateData {
@@ -1252,7 +1252,7 @@ fn constant_mandatory_fields() {
     let bytes = enc.encode_template_data(td).unwrap();
     eprintln!("Constant message: {:02x?}", bytes);
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (ConstMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         ConstMessage::ConstTest(m) => {
@@ -1289,8 +1289,8 @@ struct ConstOptMsg {
 #[test]
 fn constant_with_optional() {
     let xml = constant_optional_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     // First message with optional field present
     let td = make_td("ConstOpt", "Seq", ValueData::Value(Some(Value::UInt32(10))));
@@ -1341,7 +1341,7 @@ struct ConstStrMsg {
 #[test]
 fn constant_string_field() {
     let xml = constant_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = TemplateData {
         name: "ConstStr".to_string(),
@@ -1350,7 +1350,7 @@ fn constant_string_field() {
     };
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (ConstStrMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         ConstStrMessage::ConstStr(m) => assert_eq!(m.type_field, "MARKET_DATA"),
@@ -1378,7 +1378,7 @@ fn constant_negative_integer() {
         code: i32,
     }
 
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = TemplateData {
         name: "ConstNeg".to_string(),
         value: ValueData::Group(HashMap::new()),
@@ -1386,7 +1386,7 @@ fn constant_negative_integer() {
     };
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (ConstNegMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         ConstNegMessage::ConstNeg(m) => assert_eq!(m.code, -999),
@@ -1421,7 +1421,7 @@ struct CopyStrMsg {
 #[test]
 fn copy_string_unchanged_omits() {
     let xml = copy_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "CopyStr",
@@ -1442,7 +1442,7 @@ fn copy_string_unchanged_omits() {
         "copy on string should omit unchanged value"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (CopyStrMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (CopyStrMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -1456,8 +1456,8 @@ fn copy_string_unchanged_omits() {
 #[test]
 fn copy_string_changed_writes() {
     let xml = copy_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
 
     let td = make_td(
         "CopyStr",
@@ -1507,7 +1507,7 @@ struct CopyBVMsg {
 #[test]
 fn copy_bytes_unchanged_omits() {
     let xml = copy_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
 
     let data = vec![0xCA, 0xFE];
     let td = make_td(
@@ -1529,7 +1529,7 @@ fn copy_bytes_unchanged_omits() {
         "copy on bytes should omit unchanged value"
     );
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg1, _): (CopyBVMessage, u64) = dec.decode(&first).unwrap();
     let (msg2, _): (CopyBVMessage, u64) = dec.decode(&second).unwrap();
     match (&msg1, &msg2) {
@@ -1568,7 +1568,7 @@ struct DefaultStrMsg {
 #[test]
 fn default_string_value_omits() {
     let xml = default_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultStr",
         "Region",
@@ -1576,7 +1576,7 @@ fn default_string_value_omits() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultStrMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultStrMessage::DefaultStr(m) => assert_eq!(m.region, Some("US".to_string())),
@@ -1586,7 +1586,7 @@ fn default_string_value_omits() {
 #[test]
 fn default_string_non_default_writes() {
     let xml = default_string_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultStr",
         "Region",
@@ -1594,7 +1594,7 @@ fn default_string_non_default_writes() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultStrMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultStrMessage::DefaultStr(m) => assert_eq!(m.region, Some("EU".to_string())),
@@ -1629,7 +1629,7 @@ struct DefaultBVMsg {
 #[test]
 fn default_bytes_value_omits() {
     let xml = default_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultBV",
         "Flag",
@@ -1637,7 +1637,7 @@ fn default_bytes_value_omits() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultBVMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultBVMessage::DefaultBV(m) => assert_eq!(m.flag, Some(vec![0xAA])),
@@ -1647,7 +1647,7 @@ fn default_bytes_value_omits() {
 #[test]
 fn default_bytes_non_default_writes() {
     let xml = default_bytes_xml();
-    let mut enc = FastEncoder::new(&xml).unwrap();
+    let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = make_td(
         "DefaultBV",
         "Flag",
@@ -1655,7 +1655,7 @@ fn default_bytes_non_default_writes() {
     );
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(&xml).unwrap();
+    let mut dec = FastDecoder::new(&xml, Dictionary::Global).unwrap();
     let (msg, _): (DefaultBVMessage, u64) = dec.decode(&bytes).unwrap();
     match msg {
         DefaultBVMessage::DefaultBV(m) => assert_eq!(m.flag, Some(vec![0xBB, 0xCC])),

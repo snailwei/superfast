@@ -11,7 +11,7 @@
 use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 // ============================================================
@@ -39,8 +39,8 @@ fn make_none() -> ValueData {
 }
 
 fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(
@@ -449,10 +449,10 @@ fn sequence_copy_length_omits_when_zero() {
   </template>
 </templates>"#;
     let td = make_td("Root", &[("Items", ValueData::Sequence(Vec::new()))]);
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let bytes = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (tpl, consumed) = dec.parse(&bytes).unwrap();
     assert_eq!(consumed, bytes.len());
     if let ValueData::Sequence(items) = get_field(&tpl, "Items") {
@@ -624,7 +624,7 @@ fn templateref_dynamic_multiple() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
 
     // First message
     let mut map1 = HashMap::new();
@@ -686,7 +686,7 @@ fn templateref_dynamic_multiple() {
     };
     let bytes2 = enc.encode_template_data(td2).unwrap();
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (tpl1, consumed1) = dec.parse(&bytes1).unwrap();
     assert_eq!(consumed1, bytes1.len());
     let (tpl2, consumed2) = dec.parse(&bytes2).unwrap();
@@ -885,8 +885,8 @@ fn typeref_dictionary_type_scoping() {
     <uInt32 id="2" name="Val"/>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Encode two messages of type MsgA with same Label
     let td_a1 = make_td(
@@ -965,8 +965,8 @@ fn typeref_shared_state_same_type() {
     <uInt32 id="3" name="ValB"/>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Encode MsgA with Label
     let td_a = make_td(
@@ -1034,8 +1034,8 @@ fn typeref_group_namespace_isolation() {
     </group>
   </template>
 </templates>"#;
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // First message: both sides present
     let msg1 = make_td(

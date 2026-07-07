@@ -29,3 +29,4 @@ mod tests;
 pub use decoder::FastDecoder;
 pub use encoder::FastEncoder;
 pub use errors::{Error, Result};
+pub use types::Dictionary;

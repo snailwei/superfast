@@ -21,21 +21,32 @@ pub struct FastDecoder {
 }
 
 impl FastDecoder {
-    /// Creates Decoder from XML definitions.
-    pub fn new(text: &str) -> Result<Self> {
-        Self::new_from_xml(text, false)
-    }
-
-    /// Like [`Self::new`] but, when `template_dict` is `true`, sets all
-    /// templates to `Dictionary::Template` instead of `Dictionary::Global`,
-    /// isolating copy-operator state per template.
-    pub fn new_with_template_dict(text: &str) -> Result<Self> {
-        Self::new_from_xml(text, true)
-    }
-
-    pub(crate) fn new_from_xml(text: &str, template_dict: bool) -> Result<Self> {
+    /// Parse XML template definitions and create a decoder.
+    ///
+    /// The `default_dict` parameter sets the dictionary scope for templates
+    /// whose XML does not specify a `dictionary` attribute. See [`Dictionary`]
+    /// for the meaning of each scope.
+    ///
+    /// Use [`Dictionary::Global`] for single-template workloads (spec default).
+    /// Use [`Dictionary::Template`] for multi-template workloads where different
+    /// message types share field names and global state would cause cross-template
+    /// pollution (e.g., market-data feeds).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use superfast::{Dictionary, FastDecoder};
+    ///
+    /// let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
+    /// let (msg, consumed): (MyMessage, u64) = dec.decode(buffer)?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Static`] if the XML is malformed or semantically invalid.
+    pub fn new(text: &str, default_dict: Dictionary) -> Result<Self> {
         Ok(Self {
-            definitions: Definitions::new_from_xml(text, template_dict)?,
+            definitions: Definitions::new(text, default_dict)?,
             context: Context::new(),
             strict: true,
         })
@@ -431,12 +442,8 @@ impl<'a> DecoderContext<'a> {
 
     #[inline]
     fn switch_dictionary(&mut self, dictionary: &Dictionary) -> bool {
-        if *dictionary == Dictionary::Inherit {
-            false
-        } else {
-            self.dictionary.push(dictionary.clone());
-            true
-        }
+        self.dictionary.push(dictionary.clone());
+        true
     }
 
     #[inline]
@@ -486,7 +493,6 @@ impl<'a> DecoderContext<'a> {
     fn make_dict_type(&self) -> DictionaryType {
         let dictionary = self.dictionary.must_peek();
         match dictionary {
-            Dictionary::Inherit => unreachable!(),
             Dictionary::Global => DictionaryType::Global,
             Dictionary::Template => DictionaryType::Template(*self.template_id.must_peek()),
             Dictionary::Type => {

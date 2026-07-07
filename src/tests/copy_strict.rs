@@ -5,7 +5,7 @@
 
 use crate::model::value::ValueData;
 use crate::value::Value;
-use crate::{FastDecoder, FastEncoder};
+use crate::{Dictionary, FastDecoder, FastEncoder};
 use std::collections::HashMap;
 
 fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Option<u32> {
@@ -38,7 +38,7 @@ fn copy_err_d5_mandatory_no_initial() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let bytes = enc.encode_template_data(td).unwrap();
 
@@ -46,7 +46,7 @@ fn copy_err_d5_mandatory_no_initial() {
     let mut bytes = bytes.clone();
     bytes[0] &= 0xDF; // clear bit 5 (0xE0 -> 0xC0)
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let result = dec.parse(&bytes);
 
     assert!(result.is_err(), "Expected ERR D5");
@@ -64,12 +64,12 @@ fn copy_loose_mode_no_err_d5() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let mut bytes = enc.encode_template_data(td).unwrap();
     bytes[0] &= 0xDF; // clear bit 5 (0xE0 -> 0xC0)
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     dec.set_strict(false);
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
@@ -96,13 +96,13 @@ fn copy_initial_value_on_undefined() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let orig = enc.encode_template_data(td).unwrap();
     let mut bytes = orig.clone();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     let group = match &data.value {
@@ -128,13 +128,13 @@ fn copy_optional_no_initial_undefined_becomes_empty() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(42))));
     let orig = enc.encode_template_data(td).unwrap();
     let mut bytes = orig.clone();
     bytes[0] &= 0xDF; // clear bit 5
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data, _consumed) = dec.parse(&bytes).unwrap();
 
     let group = match &data.value {
@@ -164,8 +164,8 @@ fn copy_chain_reuse_then_override() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Seq = 10
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(10))));
@@ -204,12 +204,12 @@ fn copy_optional_null_then_absent() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(99))));
     let msg1 = enc.encode_template_data(td).unwrap();
 
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
     let (data1, _) = dec.parse(&msg1).unwrap();
     let group1 = match &data1.value {
         ValueData::Group(g) => g,
@@ -251,8 +251,8 @@ fn copy_assigned_previous_reuse() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));
     let msg1 = enc.encode_template_data(td).unwrap();
@@ -297,8 +297,8 @@ fn copy_optional_undefined_then_present() {
   </template>
 </templates>"#;
 
-    let mut enc = FastEncoder::new(xml).unwrap();
-    let mut dec = FastDecoder::new(xml).unwrap();
+    let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(xml, Dictionary::Global).unwrap();
 
     // Message 1: Seq absent → undefined + optional → empty
     let td = make_td("T", "Seq", ValueData::Value(Some(Value::UInt32(1))));

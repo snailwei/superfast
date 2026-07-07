@@ -9,7 +9,7 @@
 
 use std::time::Instant;
 use superfast::decimal::Decimal;
-use superfast::{FastDecoder, FastEncoder};
+use superfast::{Dictionary, FastDecoder, FastEncoder};
 
 // ---------------------------------------------------------------------------
 // Schema + types (shared with demo.rs)
@@ -174,7 +174,7 @@ fn bench_encode<T>(name: &'static str, items: &[T]) -> (BenchResult, Vec<u8>)
 where
     T: serde::Serialize,
 {
-    let mut enc = FastEncoder::new(SCHEMA).unwrap();
+    let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
 
     // Warmup — encodes context initialization
     let _ = enc.encode(&items[0]).unwrap();
@@ -196,7 +196,7 @@ where
 }
 
 fn bench_decode(name: &'static str, bytes: &[u8], msg_count: usize) -> BenchResult {
-    let mut dec = FastDecoder::new(SCHEMA).unwrap();
+    let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global).unwrap();
 
     // Warmup
     let _ = dec.decode::<Message>(&bytes[..64]).unwrap();
@@ -223,8 +223,8 @@ fn bench_roundtrip<T>(name: &'static str, items: &[T]) -> BenchResult
 where
     T: serde::Serialize,
 {
-    let mut enc = FastEncoder::new(SCHEMA).unwrap();
-    let mut dec = FastDecoder::new(SCHEMA).unwrap();
+    let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
+    let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global).unwrap();
 
     // Warmup
     let _ = enc.encode(&items[0]).unwrap();
@@ -258,7 +258,7 @@ fn bench_compression<T>(name: &'static str, items: &[T])
 where
     T: serde::Serialize,
 {
-    let mut enc = FastEncoder::new(SCHEMA).unwrap();
+    let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
 
     // First message — full payload (no prior context)
     let first_bytes = enc.encode(&items[0]).unwrap();

@@ -20,13 +20,19 @@ pub struct Definitions {
 }
 
 impl Definitions {
-    pub(crate) fn new_from_templates(ts: Vec<Template>, template_dict: bool) -> Result<Self> {
+    pub(crate) fn new_from_templates(ts: Vec<Template>, default_dict: Dictionary) -> Result<Self> {
+        let isolate = matches!(default_dict, Dictionary::Template);
         let mut templates = Vec::with_capacity(ts.len());
         let mut templates_by_id = HashMap::with_capacity(ts.len());
         let mut templates_by_name = HashMap::with_capacity(ts.len());
         for mut t in ts {
-            if template_dict && t.dictionary == Dictionary::Global {
+            if isolate && t.dictionary == Dictionary::Global {
                 t.dictionary = Dictionary::Template;
+            }
+            // Propagate template-level dictionary to child instructions that
+            // don't have an explicit dictionary attribute (spec inheritance).
+            for instr in &mut t.instructions {
+                instr.propagate_dictionary(&t.dictionary);
             }
             let t = Rc::new(t);
             if t.id != 0 {
@@ -64,18 +70,21 @@ impl Definitions {
         Ok(definitions)
     }
 
-    pub fn new(text: &str) -> Result<Self> {
-        Self::new_from_xml(text, false)
-    }
-
-    /// Like [`Self::new`] but, when `template_dict` is `true`, sets all
-    /// templates that lack an explicit `dictionary` attribute to use
-    /// `Dictionary::Template` instead of `Dictionary::Global`.
+    /// Parse XML template definitions.
     ///
-    /// This isolates copy-operator state per template, preventing
-    /// cross-template pollution when different message types use the same
-    /// field name with a copy operator.
-    pub fn new_from_xml(text: &str, template_dict: bool) -> Result<Self> {
+    /// The `default_dict` parameter sets the dictionary scope for templates
+    /// whose XML does not specify a `dictionary` attribute. See [`Dictionary`]
+    /// for the meaning of each scope.
+    ///
+    /// Use [`Dictionary::Global`] for single-template workloads (spec default).
+    /// Use [`Dictionary::Template`] for multi-template workloads where different
+    /// message types share field names and global state would cause cross-template
+    /// pollution (e.g., market-data feeds).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Static`] if the XML is malformed or semantically invalid.
+    pub fn new(text: &str, default_dict: Dictionary) -> Result<Self> {
         let doc = roxmltree::Document::parse(text)?;
         let root = doc
             .root()
@@ -90,7 +99,7 @@ impl Definitions {
                 templates.push(Template::from_node(child)?);
             }
         }
-        Self::new_from_templates(templates, template_dict)
+        Self::new_from_templates(templates, default_dict)
     }
 
     fn finalize(&self) -> Result<()> {
