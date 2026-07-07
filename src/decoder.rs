@@ -23,8 +23,19 @@ pub struct FastDecoder {
 impl FastDecoder {
     /// Creates Decoder from XML definitions.
     pub fn new(text: &str) -> Result<Self> {
+        Self::new_from_xml(text, false)
+    }
+
+    /// Like [`Self::new`] but, when `template_dict` is `true`, sets all
+    /// templates to `Dictionary::Template` instead of `Dictionary::Global`,
+    /// isolating copy-operator state per template.
+    pub fn new_with_template_dict(text: &str) -> Result<Self> {
+        Self::new_from_xml(text, true)
+    }
+
+    pub(crate) fn new_from_xml(text: &str, template_dict: bool) -> Result<Self> {
         Ok(Self {
-            definitions: Definitions::new(text)?,
+            definitions: Definitions::new_from_xml(text, template_dict)?,
             context: Context::new(),
             strict: true,
         })
@@ -55,7 +66,7 @@ impl FastDecoder {
     ///
     /// ```ignore
     /// // Decode into a typed struct — one type per template
-    /// let (md, consumed): (NgtsMarketData, u64) = decoder.decode(buf)?;
+    /// let (msg, consumed): (NgtsMarketData, u64) = decoder.decode(buf)?;
     ///
     /// // Or decode into an enum covering multiple templates
     /// let (msg, consumed): (Message, u64) = decoder.decode(buf)?;
@@ -101,10 +112,7 @@ impl FastDecoder {
     /// the typed struct directly.
     ///
     /// Returns `(TemplateData, bytes_consumed)`.
-    pub fn parse(
-        &mut self,
-        bytes: &[u8],
-    ) -> Result<(crate::model::template::TemplateData, usize)> {
+    pub fn parse(&mut self, bytes: &[u8]) -> Result<(crate::model::template::TemplateData, usize)> {
         let mut reader = FastReader::new(bytes);
         let mut ctx = DecoderContext {
             definitions: &mut self.definitions,
@@ -126,8 +134,7 @@ impl FastDecoder {
             .ok_or_else(|| Error::Runtime("No data in message".to_string()))?;
         Ok((data, consumed))
     }
-
-    }
+}
 
 /// Processing context for a single message decode.
 pub(crate) struct DecoderContext<'a> {

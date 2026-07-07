@@ -37,6 +37,20 @@ impl FastEncoder {
         self.context.reset();
     }
 
+    /// Like [`Self::new`] but, when `template_dict` is `true`, sets all
+    /// templates to `Dictionary::Template` instead of `Dictionary::Global`,
+    /// isolating copy-operator state per template.
+    pub fn new_with_template_dict(text: &str) -> Result<Self> {
+        Self::new_from_xml(text, true)
+    }
+
+    pub(crate) fn new_from_xml(text: &str, template_dict: bool) -> Result<Self> {
+        Ok(Self {
+            definitions: Definitions::new_from_xml(text, template_dict)?,
+            context: Context::new(),
+        })
+    }
+
     /// Encode a `serde::Serialize` value into FAST binary bytes.
     ///
     /// The template name is extracted from `#[serde(rename = "...")]` annotations

@@ -1,5 +1,6 @@
 mod bug;
 mod copy_strict;
+mod cross_template;
 mod decimal;
 mod decimal_parts;
 mod field_tests;
