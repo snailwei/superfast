@@ -1,8 +1,8 @@
 //! FAST Definitions — template registry.
 
+use std::cell::Cell;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
+use std::rc::Rc;
 
 use crate::errors::{Error, Result};
 use crate::instruction::Instruction;
@@ -13,10 +13,10 @@ use crate::value::ValueType;
 /// Stores template definitions and global processing context.
 #[derive(Clone)]
 pub struct Definitions {
-    pub(crate) templates: Vec<Arc<Template>>,
-    pub(crate) templates_by_id: HashMap<u32, Arc<Template>>,
-    pub(crate) templates_by_name: HashMap<String, Arc<Template>>,
-    pub(crate) template_id_instruction: Arc<Instruction>,
+    pub(crate) templates: Vec<Rc<Template>>,
+    pub(crate) templates_by_id: HashMap<u32, Rc<Template>>,
+    pub(crate) templates_by_name: HashMap<String, Rc<Template>>,
+    pub(crate) template_id_instruction: Rc<Instruction>,
 }
 
 impl Definitions {
@@ -34,7 +34,7 @@ impl Definitions {
             for instr in &mut t.instructions {
                 instr.propagate_dictionary(&t.dictionary);
             }
-            let t = Arc::new(t);
+            let t = Rc::new(t);
             if t.id != 0 {
                 templates_by_id.insert(t.id, t.clone());
             }
@@ -44,7 +44,7 @@ impl Definitions {
             templates.push(t);
         }
 
-        let template_id_instruction = Arc::new(Instruction {
+        let template_id_instruction = Rc::new(Instruction {
             id: 0,
             name: "__template_id__".to_string(),
             value_type: ValueType::UInt32,
@@ -54,10 +54,10 @@ impl Definitions {
             initial_value: None,
             instructions: Vec::new(),
             dictionary: Dictionary::Global,
-            key: Arc::from("__template_id__"),
+            key: Rc::from("__template_id__"),
             type_ref: TypeRef::Any,
-            has_pmap: AtomicBool::new(false),
-            was_present: AtomicI8::new(-1),
+            has_pmap: Cell::new(false),
+            was_present: Cell::new(None),
         });
 
         let definitions = Self {
@@ -105,7 +105,7 @@ impl Definitions {
     fn finalize(&self) -> Result<()> {
         for tpl in &self.templates {
             let need_pmap = self.require_presence_map_bit(&tpl.instructions)?;
-            tpl.require_pmap.store(if need_pmap { 1 } else { -1 }, Ordering::Relaxed);
+            tpl.require_pmap.set(Some(need_pmap));
         }
         Ok(())
     }
@@ -131,7 +131,7 @@ impl Definitions {
             }
         };
         let need_pmap = self.require_presence_map_bit(instructions)?;
-        instr.has_pmap.store(need_pmap, Ordering::Relaxed);
+        instr.has_pmap.set(need_pmap);
         Ok(())
     }
 
@@ -155,21 +155,15 @@ impl Definitions {
                     .templates_by_name
                     .get(&instr.name)
                     .ok_or_else(|| Error::Static(format!("template '{}' not found", instr.name)))?;
-                return match template.require_pmap.load(Ordering::Relaxed) {
-                    -1 => Err(Error::Static(format!(
+                return template.require_pmap.get().ok_or_else(|| {
+                    Error::Static(format!(
                         "template '{}' not initialized yet; consider reordering templates",
                         instr.name
-                    ))),
-                    0 => Ok(false),
-                    1 => Ok(true),
-                    _ => Err(Error::Static(format!(
-                        "template '{}' has invalid require_pmap state",
-                        instr.name
-                    ))),
-                };
+                    ))
+                });
             }
             ValueType::Decimal => {
-                if instr.has_pmap.load(Ordering::Relaxed) {
+                if instr.has_pmap.get() {
                     return Ok(true);
                 }
             }

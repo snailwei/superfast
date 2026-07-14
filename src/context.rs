@@ -1,6 +1,6 @@
 //! Decoder context — stores state across messages.
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use std::collections::HashMap;
 
@@ -10,11 +10,11 @@ use crate::value::Value;
 pub enum DictionaryType {
     Global,
     Template(u32),
-    Type(Arc<str>),
-    UserDefined(Arc<str>),
+    Type(Rc<str>),
+    UserDefined(Rc<str>),
 }
 
-type ValueKey = Arc<str>;
+type ValueKey = Rc<str>;
 
 /// Decoder state that stores global state during all messages decoding.
 #[derive(Debug, PartialEq, Default)]

@@ -1,5 +1,5 @@
 //! Operator, Presence, Dictionary, and TypeRef enums.
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::errors::{Error, Result};
 
@@ -80,7 +80,7 @@ pub enum Dictionary {
     /// Isolated per application `typeRef`.
     Type,
     /// Isolated by custom named dictionary (e.g., `dictionary="symDict"`).
-    UserDefined(Arc<str>),
+    UserDefined(Rc<str>),
 }
 
 impl Dictionary {
@@ -89,7 +89,7 @@ impl Dictionary {
             "global" => Self::Global,
             "template" => Self::Template,
             "type" => Self::Type,
-            _ => Self::UserDefined(Arc::from(name)),
+            _ => Self::UserDefined(Rc::from(name)),
         }
     }
 }
@@ -98,11 +98,11 @@ impl Dictionary {
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypeRef {
     Any,
-    ApplicationType(Arc<str>),
+    ApplicationType(Rc<str>),
 }
 
 impl TypeRef {
     pub fn from_str(name: &str) -> Self {
-        Self::ApplicationType(Arc::from(name))
+        Self::ApplicationType(Rc::from(name))
     }
 }
