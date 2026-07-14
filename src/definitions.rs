@@ -14,7 +14,9 @@ use crate::value::ValueType;
 #[derive(Clone)]
 pub struct Definitions {
     pub(crate) templates: Vec<Rc<Template>>,
-    pub(crate) templates_by_id: HashMap<u32, Rc<Template>>,
+    /// Vec lookup by template ID (faster than HashMap for dense IDs).
+    /// Index = template_id, value = Rc<Template> (or None for unused IDs).
+    pub(crate) templates_by_id: Vec<Option<Rc<Template>>>,
     pub(crate) templates_by_name: HashMap<String, Rc<Template>>,
     pub(crate) template_id_instruction: Rc<Instruction>,
 }
@@ -23,7 +25,10 @@ impl Definitions {
     pub(crate) fn new_from_templates(ts: Vec<Template>, default_dict: Dictionary) -> Result<Self> {
         let isolate = matches!(default_dict, Dictionary::Template);
         let mut templates = Vec::with_capacity(ts.len());
-        let mut templates_by_id = HashMap::with_capacity(ts.len());
+        // Build Vec index for template ID lookup (faster than HashMap for dense IDs)
+        let max_id = ts.iter().map(|t| t.id).max().unwrap_or(0) as usize;
+        let mut templates_by_id: Vec<Option<Rc<Template>>> =
+            vec![None; max_id + 1];
         let mut templates_by_name = HashMap::with_capacity(ts.len());
         for mut t in ts {
             if isolate && t.dictionary == Dictionary::Global {
@@ -36,7 +41,9 @@ impl Definitions {
             }
             let t = Rc::new(t);
             if t.id != 0 {
-                templates_by_id.insert(t.id, t.clone());
+                if (t.id as usize) <= max_id {
+                    templates_by_id[t.id as usize] = Some(t.clone());
+                }
             }
             if !t.name.is_empty() {
                 templates_by_name.insert(t.name.clone(), t.clone());
@@ -58,6 +65,7 @@ impl Definitions {
             type_ref: TypeRef::Any,
             has_pmap: Cell::new(false),
             was_present: Cell::new(None),
+            needs_dict_switch: false,
         });
 
         let definitions = Self {

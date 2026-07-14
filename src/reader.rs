@@ -59,35 +59,57 @@ impl<'a> FastReader<'a> {
     /// Read presence map. Returns `(bitmap, total_bits)`.
     #[inline(always)]
     pub fn read_presence_map(&mut self) -> Result<PresenceMap, &'static str> {
-        self.check_eof()?;
+        if self.pos >= self.buf.len() {
+            return Err("unexpected EOF");
+        }
         let mut bitmap: u64 = 0;
         let mut size: u8 = 0;
         let mut byte = self.buf[self.pos];
         self.pos += 1;
+        // Fast path: most presence maps are 1-2 bytes
+        bitmap <<= 7;
+        bitmap |= u64::from(byte & 0x7F);
+        size += 7;
+        if byte & 0x80 == 0x80 {
+            return Ok(PresenceMap::new(bitmap, size));
+        }
         loop {
+            if self.pos >= self.buf.len() {
+                return Err("unexpected EOF");
+            }
+            byte = self.buf[self.pos];
+            self.pos += 1;
             bitmap <<= 7;
             bitmap |= u64::from(byte & 0x7F);
             size += 7;
             if byte & 0x80 == 0x80 {
                 return Ok(PresenceMap::new(bitmap, size));
             }
-            self.check_eof()?;
-            byte = self.buf[self.pos];
-            self.pos += 1;
         }
     }
 
     /// Read non-nullable unsigned varint.
     #[inline(always)]
     pub fn read_uint(&mut self) -> Result<u64, &'static str> {
-        let mut value: u64 = 0;
+        // Fast path: unroll first iteration (most varints are 1-2 bytes)
+        if self.pos >= self.buf.len() {
+            return Err("unexpected EOF");
+        }
+        let byte = self.buf[self.pos];
+        self.pos += 1;
+        if byte & 0x80 == 0x80 {
+            return Ok(u64::from(byte & 0x7F));
+        }
+        let mut value = u64::from(byte);
         loop {
-            self.check_eof()?;
-            let byte = self.buf[self.pos];
+            if self.pos >= self.buf.len() {
+                return Err("unexpected EOF");
+            }
+            let b = self.buf[self.pos];
             self.pos += 1;
             value <<= 7;
-            value |= u64::from(byte & 0x7F);
-            if byte & 0x80 == 0x80 {
+            value |= u64::from(b & 0x7F);
+            if b & 0x80 == 0x80 {
                 return Ok(value);
             }
         }
@@ -110,24 +132,44 @@ impl<'a> FastReader<'a> {
     pub fn read_int(&mut self) -> Result<i64, &'static str> {
         let mut entity: u64 = 0;
         let mut total_bits: u32 = 0;
+        // Fast path: unroll first iteration
+        if self.pos >= self.buf.len() {
+            return Err("unexpected EOF");
+        }
+        let byte = self.buf[self.pos];
+        self.pos += 1;
+        entity |= u64::from(byte & 0x7F);
+        total_bits += 7;
+        if byte & 0x80 != 0 {
+            // Single-byte entity
+            if entity == 0 {
+                return Ok(0);
+            }
+            let sign_bit = 1u64 << (total_bits - 1);
+            if entity & sign_bit != 0 {
+                let masked = entity | (!0u64 << total_bits);
+                return Ok(masked as i64);
+            }
+            return Ok(entity as i64);
+        }
         loop {
-            self.check_eof()?;
-            let byte = self.buf[self.pos];
+            if self.pos >= self.buf.len() {
+                return Err("unexpected EOF");
+            }
+            let b = self.buf[self.pos];
             self.pos += 1;
             entity <<= 7;
-            entity |= u64::from(byte & 0x7F);
+            entity |= u64::from(b & 0x7F);
             total_bits += 7;
-            if byte & 0x80 != 0 {
+            if b & 0x80 != 0 {
                 break;
             }
         }
         if entity == 0 {
             return Ok(0);
         }
-        // Two's complement decode: MSB of entity (bit total_bits-1) is the sign bit.
         let sign_bit = 1u64 << (total_bits - 1);
         if entity & sign_bit != 0 {
-            // Negative: sign-extend by setting all bits above total_bits
             let masked = entity | (!0u64 << total_bits);
             Ok(masked as i64)
         } else {
@@ -198,12 +240,9 @@ impl<'a> FastReader<'a> {
     /// Read non-nullable Unicode string (varint length + raw bytes).
     pub fn read_unicode_string(&mut self) -> Result<String, &'static str> {
         let len = self.read_uint()? as usize;
-        let mut bytes = Vec::with_capacity(len);
-        for _ in 0..len {
-            self.check_eof()?;
-            bytes.push(self.buf[self.pos]);
-            self.pos += 1;
-        }
+        self.check_eof_n(len)?;
+        let bytes = self.buf[self.pos..self.pos + len].to_vec();
+        self.pos += len;
         String::from_utf8(bytes).map_err(|_| "invalid UTF-8")
     }
 
@@ -213,15 +252,11 @@ impl<'a> FastReader<'a> {
         match self.read_uint_nullable()? {
             None => Ok(None),
             Some(len) => {
-                let mut bytes = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    self.check_eof()?;
-                    bytes.push(self.buf[self.pos]);
-                    self.pos += 1;
-                }
-                String::from_utf8(bytes)
-                    .map(Some)
-                    .map_err(|_| "invalid UTF-8")
+                let len = len as usize;
+                self.check_eof_n(len)?;
+                let bytes = self.buf[self.pos..self.pos + len].to_vec();
+                self.pos += len;
+                String::from_utf8(bytes).map(Some).map_err(|_| "invalid UTF-8")
             }
         }
     }
@@ -229,12 +264,9 @@ impl<'a> FastReader<'a> {
     /// Read non-nullable bytes (varint length + raw bytes).
     pub fn read_bytes(&mut self) -> Result<Vec<u8>, &'static str> {
         let len = self.read_uint()? as usize;
-        let mut buf = Vec::with_capacity(len);
-        for _ in 0..len {
-            self.check_eof()?;
-            buf.push(self.buf[self.pos]);
-            self.pos += 1;
-        }
+        self.check_eof_n(len)?;
+        let buf = self.buf[self.pos..self.pos + len].to_vec();
+        self.pos += len;
         Ok(buf)
     }
 
@@ -244,14 +276,22 @@ impl<'a> FastReader<'a> {
         match self.read_uint_nullable()? {
             None => Ok(None),
             Some(len) => {
-                let mut buf = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    self.check_eof()?;
-                    buf.push(self.buf[self.pos]);
-                    self.pos += 1;
-                }
+                let len = len as usize;
+                self.check_eof_n(len)?;
+                let buf = self.buf[self.pos..self.pos + len].to_vec();
+                self.pos += len;
                 Ok(Some(buf))
             }
+        }
+    }
+
+    /// Check that at least `n` bytes remain (used by bulk-read methods).
+    #[inline]
+    fn check_eof_n(&self, n: usize) -> Result<(), &'static str> {
+        if self.pos + n > self.buf.len() {
+            Err("unexpected EOF")
+        } else {
+            Ok(())
         }
     }
 }

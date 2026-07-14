@@ -33,6 +33,8 @@ pub(crate) struct Instruction {
     /// Whether this field was present in the stream during the last decode.
     /// Only meaningful for fields that check the pmap (Default, Copy, Increment, Tail).
     pub(crate) was_present: Cell<Option<bool>>,
+    /// Pre-computed: whether dictionary switch is needed (not Global).
+    pub(crate) needs_dict_switch: bool,
 }
 
 impl Instruction {
@@ -55,6 +57,7 @@ impl Instruction {
             key: Rc::from(ky),
             has_pmap: Cell::new(false),
             was_present: Cell::new(None),
+            needs_dict_switch: false,
         }
     }
 
@@ -990,6 +993,8 @@ impl Instruction {
         if self.dictionary == Dictionary::Global && *parent_dict != Dictionary::Global {
             self.dictionary = parent_dict.clone();
         }
+        // Cache whether dictionary switch is needed (avoids runtime check)
+        self.needs_dict_switch = !matches!(self.dictionary, Dictionary::Global);
         // Recurse into child instructions (groups, sequences, decimal parts)
         let dict = self.dictionary.clone();
         for child in &mut self.instructions {

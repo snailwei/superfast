@@ -3,14 +3,14 @@
 //! Verifies ERR D5, ERR D6, and the optional/initial-value branches
 //! by crafting raw bytes that have the copy field absent (pmap bit clear).
 
-use crate::model::value::ValueData;
+use crate::model::value::{group_get, ValueData};
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Option<u32> {
     match &data.value {
-        ValueData::Group(g) => match g.get(field) {
+        ValueData::Group(g) => match group_get(g, field) {
             Some(ValueData::Value(Some(Value::UInt32(v)))) => Some(*v),
             _ => None,
         },
@@ -19,11 +19,11 @@ fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Optio
 }
 
 fn make_td(name: &str, field: &str, value: ValueData) -> crate::model::template::TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), value);
+    let mut group = Vec::new();
+    group.push((Rc::from(field), value));
     crate::model::template::TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(group),
         pmap_bytes: None,
     }
 }
@@ -78,8 +78,7 @@ fn copy_loose_mode_no_err_d5() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group
-            .get("Seq")
+        group_get(group, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(0)))) })
             .unwrap_or(false),
         "Loose mode: Seq should be type default 0"
@@ -110,8 +109,7 @@ fn copy_initial_value_on_undefined() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group
-            .get("Seq")
+        group_get(group, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(10)))) })
             .unwrap_or(false),
         "Expected initial value 10"
@@ -142,8 +140,7 @@ fn copy_optional_no_initial_undefined_becomes_empty() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group
-            .get("Seq")
+        group_get(group, "Seq")
             .map(|v| matches!(v, ValueData::Value(None)))
             .unwrap_or(false),
         "Expected Seq to be absent (None)"
@@ -216,8 +213,7 @@ fn copy_optional_null_then_absent() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group1
-            .get("Seq")
+        group_get(group1, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(99)))) })
             .unwrap_or(false),
         "Message 1: Seq should be 99"
@@ -233,8 +229,7 @@ fn copy_optional_null_then_absent() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group2
-            .get("Seq")
+        group_get(group2, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(99)))) })
             .unwrap_or(false),
         "Message 2: Seq should be copied as 99"
@@ -262,8 +257,7 @@ fn copy_assigned_previous_reuse() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group1
-            .get("Seq")
+        group_get(group1, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(1)))) })
             .unwrap_or(false),
         "Message 1: Seq should be 1"
@@ -279,8 +273,7 @@ fn copy_assigned_previous_reuse() {
         _ => panic!("Expected group"),
     };
     assert!(
-        group2
-            .get("Seq")
+        group_get(group2, "Seq")
             .map(|v| { matches!(v, ValueData::Value(Some(Value::UInt32(1)))) })
             .unwrap_or(false),
         "Message 2: Seq should be copied as 1"

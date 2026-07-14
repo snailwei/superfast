@@ -8,10 +8,10 @@
 
 use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
-use crate::model::value::ValueData;
+use crate::model::value::{group_get, ValueData};
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 // ============================================================
 // Helpers
@@ -26,13 +26,13 @@ fn make_dec_none() -> ValueData {
 }
 
 fn make_td(name: &str, fields: &[(&str, ValueData)]) -> TemplateData {
-    let mut map = HashMap::new();
+    let mut group = Vec::new();
     for (k, v) in fields {
-        map.insert(k.to_string(), v.clone());
+        group.push((Rc::from(*k), v.clone()));
     }
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(group),
         pmap_bytes: None,
     }
 }
@@ -54,7 +54,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
 
 fn get_decimal<'a>(tpl: &'a TemplateData, field: &str) -> &'a Decimal {
     if let ValueData::Group(ref g) = tpl.value {
-        if let Some(ValueData::Value(Some(Value::Decimal(d)))) = g.get(field) {
+        if let Some(ValueData::Value(Some(Value::Decimal(d)))) = group_get(g, field) {
             return d;
         }
     }
@@ -590,7 +590,7 @@ fn optional_decimal_with_parts_absent() {
     let (tpl, _) = dec.parse(&bytes).unwrap();
     if let ValueData::Group(ref g) = tpl.value {
         assert!(
-            matches!(g.get("Price"), Some(ValueData::Value(None))),
+            matches!(group_get(g, "Price"), Some(ValueData::Value(None))),
             "Price should be None (absent)"
         );
     } else {
@@ -638,7 +638,7 @@ fn optional_decimal_with_parts_present_then_absent() {
     assert_eq!(*get_decimal(&tpl1, "Price"), Decimal::new(-2, 10000));
     if let ValueData::Group(ref g) = tpl2.value {
         assert!(
-            matches!(g.get("Price"), Some(ValueData::Value(None))),
+            matches!(group_get(g, "Price"), Some(ValueData::Value(None))),
             "Price should be None in message 2"
         );
     }
@@ -821,7 +821,7 @@ fn exponent_copy_mantissa_delta_multi_message() {
         offset += consumed as usize;
 
         if let ValueData::Group(ref g) = tpl.value {
-            if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = g.get("Seq") {
+            if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = group_get(g, "Seq") {
                 assert_eq!(seq, expected_seq, "tick {} seq", i + 1);
             }
         }

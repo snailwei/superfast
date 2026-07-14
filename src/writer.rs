@@ -4,6 +4,9 @@ pub struct FastWriter {
     pub buf: Vec<u8>,
 }
 
+/// Default buffer capacity for a new FastWriter (covers most single messages).
+const DEFAULT_CAPACITY: usize = 64;
+
 impl FastWriter {
     fn buf(&mut self) -> &mut Vec<u8> {
         &mut self.buf
@@ -226,7 +229,9 @@ gen_write_impl!(FastWriter);
 #[allow(dead_code)]
 impl FastWriter {
     pub fn new() -> Self {
-        Self { buf: Vec::new() }
+        Self {
+            buf: Vec::with_capacity(DEFAULT_CAPACITY),
+        }
     }
 
     pub fn into_inner(self) -> Vec<u8> {

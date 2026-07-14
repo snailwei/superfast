@@ -1,6 +1,6 @@
 //! ValueData — intermediate representation between FAST decode and serde deserialize.
 
-use std::collections::HashMap;
+use std::rc::Rc;
 
 use serde::de::{DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor};
 
@@ -9,12 +9,23 @@ use crate::value::Value;
 
 use super::template::TemplateData;
 
+/// Intermediate group (template, sequence item, or group fields).
+/// Stored as Vec for zero-allocation appends and cache-friendly iteration.
+/// Order matches field declaration order in the template.
+pub type FieldVec = Vec<(Rc<str>, ValueData)>;
+
+/// Find a field by name in a group (linear scan, cheap for typical <20 fields).
+pub(crate) fn group_get<'a>(g: &'a FieldVec, name: &str) -> Option<&'a ValueData> {
+    g.iter().find(|(k, _)| k.as_ref() == name).map(|(_, v)| v)
+}
+
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub enum ValueData {
     #[default]
     None, // For optional groups and sequences
     Value(Option<Value>),
-    Group(HashMap<String, ValueData>),
+    Group(FieldVec),
     Sequence(Vec<ValueData>),
     StaticTemplateRef(String, Box<ValueData>),
     DynamicTemplateRef(Box<TemplateData>),
@@ -411,12 +422,12 @@ impl<'de> serde::Deserializer<'de> for ValueData {
 }
 
 struct GroupDeserializer {
-    items: <HashMap<String, ValueData> as IntoIterator>::IntoIter,
+    items: std::vec::IntoIter<(Rc<str>, ValueData)>,
     value: Option<ValueData>,
 }
 
 impl GroupDeserializer {
-    fn new(values: HashMap<String, ValueData>) -> Self {
+    fn new(values: Vec<(Rc<str>, ValueData)>) -> Self {
         Self {
             items: values.into_iter(),
             value: None,

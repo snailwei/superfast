@@ -176,8 +176,10 @@ where
 {
     let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
 
-    // Warmup — encodes context initialization
-    let _ = enc.encode(&items[0]).unwrap();
+    // Warmup — encode enough to boost CPU frequency before timing
+    for item in &items[..1000] {
+        let _ = enc.encode(item).unwrap();
+    }
 
     let start = Instant::now();
     let mut all_bytes = Vec::new();
@@ -198,8 +200,15 @@ where
 fn bench_decode(name: &'static str, bytes: &[u8], msg_count: usize) -> BenchResult {
     let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global).unwrap();
 
-    // Warmup
-    let _ = dec.decode::<Message>(&bytes[..64]).unwrap();
+    // Warmup — decode enough to boost CPU frequency before timing
+    let mut warmup_offset = 0;
+    for _ in 0..1000 {
+        if warmup_offset >= bytes.len() {
+            break;
+        }
+        let (_msg, consumed): (Message, u64) = dec.decode(&bytes[warmup_offset..]).unwrap();
+        warmup_offset += consumed as usize;
+    }
 
     let start = Instant::now();
     let mut offset = 0;
@@ -226,11 +235,11 @@ where
     let mut enc = FastEncoder::new(SCHEMA, Dictionary::Global).unwrap();
     let mut dec = FastDecoder::new(SCHEMA, Dictionary::Global).unwrap();
 
-    // Warmup
-    let _ = enc.encode(&items[0]).unwrap();
-    let _ = dec
-        .decode::<Message>(&enc.encode(&items[0]).unwrap()[..])
-        .unwrap();
+    // Warmup — boost CPU frequency before timing
+    for item in &items[..1000] {
+        let encoded = enc.encode(item).unwrap();
+        let _ = dec.decode::<Message>(&encoded[..]).unwrap();
+    }
 
     let start = Instant::now();
     let mut all_bytes = Vec::new();

@@ -20,16 +20,19 @@ impl TemplateData {
     /// Get a field by name as a `&str`, returning `None` if absent or not a string.
     pub fn get_str(&self, field: &str) -> Option<&str> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(
-                    crate::value::Value::AsciiString(s) | crate::value::Value::UnicodeString(s),
-                )) = vd
-                {
-                    Some(s.as_str())
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(
+                        crate::value::Value::AsciiString(s) | crate::value::Value::UnicodeString(s),
+                    )) = vd
+                    {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -38,13 +41,16 @@ impl TemplateData {
     /// Get a field by name as an `i32`, returning `None` if absent or not an i32.
     pub fn get_i32(&self, field: &str) -> Option<i32> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(crate::value::Value::Int32(n))) = vd {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(crate::value::Value::Int32(n))) = vd {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -53,13 +59,16 @@ impl TemplateData {
     /// Get a field by name as an `i64`, returning `None` if absent or not an i64.
     pub fn get_i64(&self, field: &str) -> Option<i64> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(crate::value::Value::Int64(n))) = vd {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(crate::value::Value::Int64(n))) = vd {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -68,13 +77,16 @@ impl TemplateData {
     /// Get a field by name as a `u32`, returning `None` if absent or not a u32.
     pub fn get_u32(&self, field: &str) -> Option<u32> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(crate::value::Value::UInt32(n))) = vd {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(crate::value::Value::UInt32(n))) = vd {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -83,13 +95,16 @@ impl TemplateData {
     /// Get a field by name as a `u64`, returning `None` if absent or not a u64.
     pub fn get_u64(&self, field: &str) -> Option<u64> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(crate::value::Value::UInt64(n))) = vd {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(crate::value::Value::UInt64(n))) = vd {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -98,13 +113,16 @@ impl TemplateData {
     /// Get a field by name as a `&Decimal`, returning `None` if absent or not a decimal.
     pub fn get_decimal(&self, field: &str) -> Option<&crate::decimal::Decimal> {
         if let ValueData::Group(ref group) = self.value {
-            group.get(field).and_then(|vd| {
-                if let ValueData::Value(Some(crate::value::Value::Decimal(d))) = vd {
-                    Some(d)
-                } else {
-                    None
-                }
-            })
+            group
+                .iter()
+                .find(|(k, _)| k.as_ref() == field)
+                .and_then(|(_, vd)| {
+                    if let ValueData::Value(Some(crate::value::Value::Decimal(d))) = vd {
+                        Some(d)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -231,16 +249,15 @@ impl<'de> serde::de::VariantAccess<'de> for VariantDeserializer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
     use crate::value::Value;
+    use std::rc::Rc;
 
     fn make_group(fields: &[(&str, ValueData)]) -> TemplateData {
-        let mut group = HashMap::new();
-        for (name, val) in fields {
-            group.insert(name.to_string(), val.clone());
-        }
+        let group = fields
+            .iter()
+            .map(|(name, val)| (Rc::from(*name), val.clone()))
+            .collect();
         TemplateData {
             name: "Test".into(),
             value: ValueData::Group(group),

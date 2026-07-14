@@ -1,12 +1,12 @@
 //! Model — bridges FAST decode output with serde deserialization.
 
-use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::stacked::Stacked;
 use crate::value::Value;
 
 use self::template::TemplateData;
-use self::value::ValueData;
+use self::value::{FieldVec, ValueData};
 
 mod decimal;
 pub(crate) mod serialize;
@@ -33,7 +33,7 @@ pub struct ModelFactory {
     /// Raw pmap bytes from the original message (for round-trip fidelity)
     pmap_bytes: Option<Vec<u8>>,
     /// Raw bytes of truncated sequence items (for round-trip fidelity)
-    truncated_bytes: HashMap<String, Vec<u8>>,
+    truncated_bytes: Vec<(String, Vec<u8>)>,
 }
 
 impl ModelFactory {
@@ -45,7 +45,7 @@ impl ModelFactory {
             seq_stack: Vec::new(),
             consumed: 0,
             pmap_bytes: None,
-            truncated_bytes: HashMap::new(),
+            truncated_bytes: Vec::new(),
         }
     }
 
@@ -57,6 +57,7 @@ impl ModelFactory {
         self.consumed
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_pmap_bytes(&mut self, bytes: Vec<u8>) {
         self.pmap_bytes = Some(bytes);
     }
@@ -75,9 +76,11 @@ impl Default for ModelFactory {
 }
 
 impl ModelFactory {
-    pub(crate) fn start_template(&mut self, _id: u32, name: &str) {
-        self.context
-            .push((name.to_string(), ValueData::Group(HashMap::default())));
+    pub(crate) fn start_template(&mut self, _id: u32, name: &str, field_count: usize) {
+        self.context.push((
+            name.to_string(),
+            ValueData::Group(Vec::with_capacity(field_count)),
+        ));
     }
 
     pub(crate) fn stop_template(&mut self) {
@@ -85,11 +88,11 @@ impl ModelFactory {
         // Inject any truncated sequence bytes into the root group
         if !self.truncated_bytes.is_empty() {
             if let ValueData::Group(group) = &mut value {
-                for (seq_name, bytes) in self.truncated_bytes.drain() {
-                    group.insert(
-                        format!("__{}_trunc__", seq_name),
+                for (seq_name, bytes) in self.truncated_bytes.drain(..) {
+                    group.push((
+                        Rc::from(format!("__{}_trunc__", seq_name)),
                         ValueData::Value(Some(Value::Bytes(bytes))),
-                    );
+                    ));
                 }
             }
         }
@@ -100,10 +103,10 @@ impl ModelFactory {
         });
     }
 
-    pub(crate) fn set_value(&mut self, _id: u32, name: &str, value: Option<Value>) {
+    pub(crate) fn set_value(&mut self, _id: u32, name: Rc<str>, value: Option<Value>) {
         let last = self.context.last_mut().unwrap();
         if let ValueData::Group(group) = &mut last.1 {
-            group.insert(name.to_string(), ValueData::Value(value.clone()));
+            group.push((name, ValueData::Value(value)));
         }
     }
 
@@ -122,13 +125,10 @@ impl ModelFactory {
     }
 
     pub(crate) fn start_sequence_item(&mut self, _index: u32, pmap_bytes: Option<Vec<u8>>) {
-        let mut group = HashMap::default();
+        let mut group = FieldVec::new();
         // Store original segment pmap for round-trip fidelity
         if let Some(bytes) = pmap_bytes {
-            group.insert(
-                "__pmap__".to_string(),
-                ValueData::Value(Some(Value::Bytes(bytes))),
-            );
+            group.push((Rc::from("__pmap__"), ValueData::Value(Some(Value::Bytes(bytes)))));
         }
         self.context.push((String::new(), ValueData::Group(group)));
         self.ref_num.push(0);
@@ -156,12 +156,12 @@ impl ModelFactory {
             if let ValueData::Group(group) = context {
                 // Store original length for round-trip fidelity (truncated sequences)
                 if seq_len != actual_len {
-                    group.insert(
-                        format!("__{}_len__", n),
+                    group.push((
+                        Rc::from(format!("__{}_len__", n)),
                         ValueData::Value(Some(Value::UInt32(seq_len))),
-                    );
+                    ));
                 }
-                group.insert(n, ValueData::Sequence(items));
+                group.push((Rc::from(n), ValueData::Sequence(items)));
             }
         }
     }
@@ -169,12 +169,12 @@ impl ModelFactory {
     /// Store raw bytes of truncated sequence items for round-trip fidelity.
     /// Cached until stop_template() applies them to the root group.
     pub(crate) fn set_truncated_bytes(&mut self, seq_name: String, bytes: Vec<u8>) {
-        self.truncated_bytes.insert(seq_name, bytes);
+        self.truncated_bytes.push((seq_name, bytes));
     }
 
     pub(crate) fn start_group(&mut self, name: &str) {
         self.context
-            .push((name.to_string(), ValueData::Group(HashMap::default())));
+            .push((name.to_string(), ValueData::Group(Vec::new())));
         self.ref_num.push(0);
     }
 
@@ -183,7 +183,7 @@ impl ModelFactory {
         let (n, g) = self.context.pop().unwrap();
         let last = self.context.last_mut().unwrap();
         if let ValueData::Group(group) = &mut last.1 {
-            group.insert(n, g);
+            group.push((Rc::from(n), g));
         }
     }
 
@@ -202,7 +202,7 @@ impl ModelFactory {
             self.context.push((name.to_string(), tpl_ref));
         }
         self.context
-            .push((String::new(), ValueData::Group(HashMap::default())));
+            .push((String::new(), ValueData::Group(Vec::new())));
         self.ref_num.push(0);
     }
 
@@ -220,7 +220,7 @@ impl ModelFactory {
                 }
                 ValueData::DynamicTemplateRef(mut t) => {
                     t.value = vg;
-                    group.insert(n, ValueData::DynamicTemplateRef(t));
+                    group.push((Rc::from(n), ValueData::DynamicTemplateRef(t)));
                 }
                 _ => {}
             }

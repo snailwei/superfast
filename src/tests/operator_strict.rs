@@ -3,14 +3,15 @@
 //! Covers Increment (ERR D6), Delta (empty previous), Tail (ERR D5/D6).
 //! Default strict mode = true; set_strict(false) only for loose-mode tests.
 
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Option<u32> {
     match &data.value {
-        ValueData::Group(g) => match g.get(field) {
+        ValueData::Group(g) => match group_get(g, field) {
             Some(ValueData::Value(Some(Value::UInt32(v)))) => Some(*v),
             _ => None,
         },
@@ -20,7 +21,7 @@ fn get_uint32(data: &crate::model::template::TemplateData, field: &str) -> Optio
 
 fn get_string(data: &crate::model::template::TemplateData, field: &str) -> Option<String> {
     match &data.value {
-        ValueData::Group(g) => match g.get(field) {
+        ValueData::Group(g) => match group_get(g, field) {
             Some(ValueData::Value(Some(Value::AsciiString(v)))) => Some(v.clone()),
             _ => None,
         },
@@ -29,11 +30,11 @@ fn get_string(data: &crate::model::template::TemplateData, field: &str) -> Optio
 }
 
 fn make_td(name: &str, field: &str, value: ValueData) -> crate::model::template::TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), value);
+    let mut vec = Vec::new();
+    vec.push((Rc::from(field), value));
     crate::model::template::TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }

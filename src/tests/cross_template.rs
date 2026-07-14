@@ -4,18 +4,18 @@ use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn v(s: &str) -> ValueData {
     ValueData::Value(Some(Value::AsciiString(s.to_string())))
 }
 
 fn td(name: &str, field: &str, val: ValueData) -> TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), val);
+    let mut group = Vec::new();
+    group.push((Rc::from(field), val));
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(group),
         pmap_bytes: None,
     }
 }

@@ -14,20 +14,21 @@
 
 use crate::{Dictionary, FastDecoder, FastEncoder};
 use crate::model::template::TemplateData;
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use std::collections::HashMap;
+use std::rc::Rc;
 
 // ============================================================
 // Helpers
 // ============================================================
 
 fn make_td(name: &str, field: &str, value: ValueData) -> TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), value);
+    let mut vec = Vec::new();
+    vec.push((Rc::from(field), value));
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -43,7 +44,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
 
 fn get_field<'a>(tpl: &'a TemplateData, field: &str) -> &'a ValueData {
     if let ValueData::Group(ref g) = tpl.value {
-        g.get(field)
+        group_get(g, field)
             .unwrap_or_else(|| panic!("field '{}' not found in decoded template", field))
     } else {
         panic!("expected ValueData::Group, got: {:?}", tpl.value)

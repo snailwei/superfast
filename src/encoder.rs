@@ -11,7 +11,7 @@ use crate::definitions::Definitions;
 use crate::errors::{Error, Result};
 use crate::instruction::Instruction;
 use crate::model::template::TemplateData;
-use crate::model::value::ValueData;
+use crate::model::value::{ValueData, group_get};
 use crate::pmap::PresenceMap;
 use crate::template::Template;
 use crate::types::{Dictionary, Operator, TypeRef};
@@ -276,7 +276,7 @@ impl<'a> EncoderContext<'a> {
         data: &ValueData,
     ) -> Result<Option<Value>> {
         let mut value: Option<Value> = match (data, instruction.name.as_str()) {
-            (ValueData::Group(group), name) => match group.get(name) {
+            (ValueData::Group(group), name) => match group_get(group, name) {
                 Some(ValueData::Value(v)) => v.clone(),
                 Some(ValueData::None) => instruction.initial_value.clone(),
                 _ => None,
@@ -293,7 +293,7 @@ impl<'a> EncoderContext<'a> {
             let is_explicit_null = match data {
                 ValueData::Group(group) => {
                     matches!(
-                        group.get(instruction.name.as_str()),
+                        group_get(group, instruction.name.as_str()),
                         Some(ValueData::Value(None))
                     )
                 }
@@ -417,8 +417,8 @@ impl<'a> EncoderContext<'a> {
     ) -> Result<()> {
         self.push_context(instruction.dictionary.clone(), instruction.type_ref.clone());
 
-        let field_data = match (data, instruction.name.as_str()) {
-            (ValueData::Group(group), name) => group.get(name).unwrap_or(&ValueData::None),
+        let field_data = match data {
+            ValueData::Group(group) => group_get(group, instruction.name.as_str()).unwrap_or(&ValueData::None),
             _ => data,
         };
 
@@ -431,7 +431,7 @@ impl<'a> EncoderContext<'a> {
         let seq_len = match data {
             ValueData::Group(group) => {
                 if let Some(ValueData::Value(Some(Value::UInt32(orig_len)))) =
-                    group.get(&format!("__{}_len__", instruction.name))
+                    group_get(group, &format!("__{}_len__", instruction.name))
                 {
                     *orig_len
                 } else {
@@ -465,7 +465,7 @@ impl<'a> EncoderContext<'a> {
         // Replay truncated bytes for round-trip fidelity
         if let ValueData::Group(group) = data {
             if let Some(ValueData::Value(Some(Value::Bytes(truncated)))) =
-                group.get(&format!("__{}_trunc__", instruction.name))
+                group_get(group, &format!("__{}_trunc__", instruction.name))
             {
                 seg.body.extend_from_slice(truncated);
             }
@@ -484,7 +484,7 @@ impl<'a> EncoderContext<'a> {
     ) -> Result<()> {
         // Check for stored pmap bytes from decoder
         let stored_pmap = if let ValueData::Group(group) = item {
-            group.get("__pmap__").and_then(|v| match v {
+            group_get(group, "__pmap__").and_then(|v| match v {
                 ValueData::Value(Some(Value::Bytes(b))) => Some(b.clone()),
                 _ => None,
             })
@@ -522,8 +522,8 @@ impl<'a> EncoderContext<'a> {
     ) -> Result<()> {
         self.push_context(instruction.dictionary.clone(), instruction.type_ref.clone());
 
-        let field_data = match (data, &instruction.name) {
-            (ValueData::Group(group), name) => group.get(name).unwrap_or(&ValueData::None),
+        let field_data = match data {
+            ValueData::Group(group) => group_get(group, &instruction.name).unwrap_or(&ValueData::None),
             _ => data,
         };
 
@@ -579,7 +579,8 @@ impl<'a> EncoderContext<'a> {
                 ValueData::Group(g) => {
                     // Find first DynamicTemplateRef in group
                     let found = g
-                        .values()
+                        .iter()
+                        .map(|(_, v)| v)
                         .find(|v| matches!(v, ValueData::DynamicTemplateRef(_)));
                     match found {
                         Some(ValueData::DynamicTemplateRef(t)) => &t.value,
@@ -591,7 +592,7 @@ impl<'a> EncoderContext<'a> {
         } else {
             // Static templateRef: fields merge into parent under the ref name
             match data {
-                ValueData::Group(g) => g.get(&instruction.name).unwrap_or(&ValueData::None),
+                ValueData::Group(g) => group_get(g, &instruction.name).unwrap_or(&ValueData::None),
                 _ => &ValueData::None,
             }
         };
@@ -602,7 +603,8 @@ impl<'a> EncoderContext<'a> {
                 ValueData::DynamicTemplateRef(t) => t.name.clone(),
                 ValueData::Group(g) => {
                     if let Some(ValueData::DynamicTemplateRef(t)) = g
-                        .values()
+                        .iter()
+                        .map(|(_, v)| v)
                         .find(|v| matches!(v, ValueData::DynamicTemplateRef(_)))
                     {
                         t.name.clone()

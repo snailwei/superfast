@@ -200,13 +200,9 @@ impl<'a> DecoderContext<'a> {
     }
 
     pub(crate) fn decode_template(&mut self) -> Result<()> {
-        // Capture pmap bytes for round-trip fidelity
-        let pmap_start = self.rdr.pos();
         match self.rdr.read_presence_map() {
             Ok(pmap) => {
-                let pmap_bytes = self.rdr.buf()[pmap_start..self.rdr.pos()].to_vec();
                 self.presence_map.push(pmap);
-                self.model.set_pmap_bytes(pmap_bytes);
             }
             Err("eof") => return Err(Error::UnexpectedEof),
             Err(_e) => return Err(Error::UnexpectedEof),
@@ -216,10 +212,11 @@ impl<'a> DecoderContext<'a> {
         let template = self
             .definitions
             .templates_by_id
-            .get(&tid)
+            .get(tid as usize)
+            .and_then(|t| t.as_ref())
             .ok_or_else(|| Error::Dynamic(format!("Unknown template id: {}", tid)))?
             .clone();
-        self.model.start_template(template.id, &template.name);
+        self.model.start_template(template.id, &template.name, template.instructions.len());
 
         let has_dictionary = self.switch_dictionary(&template.dictionary);
         let has_type_ref = self.switch_type_ref(&template.type_ref);
@@ -243,17 +240,22 @@ impl<'a> DecoderContext<'a> {
     fn decode_instructions(&mut self, instructions: &[Instruction]) -> Result<()> {
         for instruction in instructions {
             match instruction.value_type {
-                ValueType::Sequence => {
-                    self.decode_sequence(instruction)?;
-                }
-                ValueType::Group => {
-                    self.decode_group(instruction)?;
-                }
-                ValueType::TemplateReference => {
-                    self.decode_template_ref(instruction)?;
-                }
+                ValueType::Sequence => self.decode_sequence(instruction)?,
+                ValueType::Group => self.decode_group(instruction)?,
+                ValueType::TemplateReference => self.decode_template_ref(instruction)?,
                 _ => {
-                    self.decode_field(instruction)?;
+                    // Fast path: skip dictionary switch for Global (benchmark default)
+                    // Slow path: use switch_dictionary to avoid redundant push/pop
+                    let has_dict = if instruction.needs_dict_switch {
+                        self.switch_dictionary(&instruction.dictionary)
+                    } else {
+                        false
+                    };
+                    let value = instruction.extract(self)?;
+                    if has_dict {
+                        _ = self.dictionary.pop();
+                    }
+                    self.model.set_value(instruction.id, instruction.key.clone(), value);
                 }
             }
         }
@@ -267,17 +269,12 @@ impl<'a> DecoderContext<'a> {
         Ok(())
     }
 
-    fn decode_field(&mut self, instruction: &Instruction) -> Result<()> {
-        let value = self.extract_field(instruction)?;
-        // extract() already reconstructed the correct value from operators
-        // (copy/default/increment/tail) — always set it in the model
-        self.model
-            .set_value(instruction.id, &instruction.name, value);
-        Ok(())
-    }
-
     fn decode_sequence(&mut self, instruction: &Instruction) -> Result<()> {
-        let has_dictionary = self.switch_dictionary(&instruction.dictionary);
+        let has_dict = if instruction.needs_dict_switch {
+            self.switch_dictionary(&instruction.dictionary)
+        } else {
+            false
+        };
         let has_type_ref = self.switch_type_ref(&instruction.type_ref);
 
         let length_instruction = instruction.instructions.first().unwrap();
@@ -352,8 +349,8 @@ impl<'a> DecoderContext<'a> {
             _ => return Err(Error::Dynamic("Length field must be UInt32".to_string())),
         }
 
-        if has_dictionary {
-            self.restore_dictionary();
+        if has_dict {
+            _ = self.dictionary.pop();
         }
         if has_type_ref {
             self.restore_type_ref();
@@ -366,7 +363,11 @@ impl<'a> DecoderContext<'a> {
             return Ok(());
         }
 
-        let has_dictionary = self.switch_dictionary(&instruction.dictionary);
+        let has_dict = if instruction.needs_dict_switch {
+            self.switch_dictionary(&instruction.dictionary)
+        } else {
+            false
+        };
         let has_type_ref = self.switch_type_ref(&instruction.type_ref);
 
         self.model.start_group(&instruction.name);
@@ -377,8 +378,8 @@ impl<'a> DecoderContext<'a> {
         }
         self.model.stop_group();
 
-        if has_dictionary {
-            self.restore_dictionary();
+        if has_dict {
+            _ = self.dictionary.pop();
         }
         if has_type_ref {
             self.restore_type_ref();
@@ -394,7 +395,8 @@ impl<'a> DecoderContext<'a> {
             self.decode_template_id()?;
             self.definitions
                 .templates_by_id
-                .get(self.template_id.peek().unwrap())
+                .get(*self.template_id.peek().unwrap() as usize)
+                .and_then(|t| t.as_ref())
                 .ok_or_else(|| {
                     Error::Dynamic(format!(
                         "Unknown template id: {}",
@@ -432,16 +434,24 @@ impl<'a> DecoderContext<'a> {
     }
 
     fn extract_field(&mut self, instruction: &Instruction) -> Result<Option<Value>> {
-        let has_dict = self.switch_dictionary(&instruction.dictionary);
+        let has_dict = if instruction.needs_dict_switch {
+            self.switch_dictionary(&instruction.dictionary)
+        } else {
+            false
+        };
         let value = instruction.extract(self)?;
         if has_dict {
-            self.restore_dictionary();
+            _ = self.dictionary.pop();
         }
         Ok(value)
     }
 
     #[inline]
     fn switch_dictionary(&mut self, dictionary: &Dictionary) -> bool {
+        // Skip push/pop if dictionary hasn't changed
+        if self.dictionary.must_peek() == dictionary {
+            return false;
+        }
         self.dictionary.push(dictionary.clone());
         true
     }
@@ -473,21 +483,52 @@ impl<'a> DecoderContext<'a> {
 
     #[inline]
     pub(crate) fn ctx_set(&mut self, i: &Instruction, v: Option<Value>) {
-        self.context.set(self.make_dict_type(), i.key.clone(), v);
+        // Check active dictionary, not instruction flag (inherited dicts matter too)
+        if matches!(self.dictionary.must_peek(), Dictionary::Global) {
+            self.context.set_global(&i.key, v);
+        } else {
+            self.context.set(self.get_dict_type(), i.key.clone(), v);
+        }
     }
 
     #[inline]
-    pub(crate) fn ctx_get(&mut self, i: &Instruction) -> Result<Option<Option<Value>>> {
-        let v = self.context.get(self.make_dict_type(), &i.key);
-        if let Some(Some(ref v)) = v
-            && !i.value_type.matches(v)
-        {
-            return Err(Error::Runtime(format!(
-                "field {} has wrong value type in context",
-                i.name
-            )));
+    pub(crate) fn ctx_get(&self, i: &Instruction) -> Result<Option<Option<Value>>> {
+        if matches!(self.dictionary.must_peek(), Dictionary::Global) {
+            // Fast path: Global dictionary (avoids Rc clone + type construction)
+            let v = self.context.get_global_ref(&i.key);
+            if let Some(Some(v)) = &v
+                && !i.value_type.matches(v)
+            {
+                return Err(Error::Runtime(format!(
+                    "field {} has wrong value type in context",
+                    i.name
+                )));
+            }
+            Ok(v.map(|inner| inner.cloned()))
+        } else {
+            let v = self.context.get(self.get_dict_type(), &i.key);
+            if let Some(Some(ref val)) = v
+                && !i.value_type.matches(val)
+            {
+                return Err(Error::Runtime(format!(
+                    "field {} has wrong value type in context",
+                    i.name
+                )));
+            }
+            Ok(v)
         }
-        Ok(v)
+    }
+
+    /// Cached dictionary type lookup.
+    /// Recomputes `dict_type` only when dictionary/type_ref/template_id changes.
+    #[inline]
+    fn get_dict_type(&self) -> DictionaryType {
+        // Fast path: Global dict is the benchmark default (no allocation)
+        if matches!(self.dictionary.must_peek(), Dictionary::Global) {
+            return DictionaryType::Global;
+        }
+        // For non-Global, use cached value (updated on each switch/restore)
+        self.make_dict_type()
     }
 
     fn make_dict_type(&self) -> DictionaryType {

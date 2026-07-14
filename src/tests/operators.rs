@@ -11,14 +11,14 @@ use crate::model::template::TemplateData;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn make_td(name: &str, field: &str, value: ValueData) -> TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), value);
+    let mut vec = Vec::new();
+    vec.push((Rc::from(field), value));
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -691,26 +691,26 @@ struct MultiTestMsg {
 }
 
 fn make_multi(seq: u32, status: i32, order: u32, symbol: &str) -> TemplateData {
-    let mut map = HashMap::new();
-    map.insert(
-        "Seq".to_string(),
+    let mut vec = Vec::new();
+    vec.push((
+        Rc::from("Seq"),
         ValueData::Value(Some(Value::UInt32(seq))),
-    );
-    map.insert(
-        "Status".to_string(),
+    ));
+    vec.push((
+        Rc::from("Status"),
         ValueData::Value(Some(Value::Int32(status))),
-    );
-    map.insert(
-        "OrderNum".to_string(),
+    ));
+    vec.push((
+        Rc::from("OrderNum"),
         ValueData::Value(Some(Value::UInt32(order))),
-    );
-    map.insert(
-        "Symbol".to_string(),
+    ));
+    vec.push((
+        Rc::from("Symbol"),
         ValueData::Value(Some(Value::AsciiString(symbol.to_string()))),
-    );
+    ));
     TemplateData {
         name: "MultiTest".to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -927,7 +927,7 @@ fn optional_field_absent() {
     // Don't include "Val" in the template data — it's absent
     let td = TemplateData {
         name: "OptTest".to_string(),
-        value: ValueData::Group(HashMap::new()),
+        value: ValueData::Group(Vec::new()),
         pmap_bytes: None,
     };
     let bytes = enc.encode_template_data(td).unwrap();
@@ -1246,7 +1246,7 @@ fn constant_mandatory_fields() {
     // Constant fields don't need values in input — encoder uses schema constant
     let td = TemplateData {
         name: "ConstTest".to_string(),
-        value: ValueData::Group(HashMap::new()),
+        value: ValueData::Group(Vec::new()),
         pmap_bytes: None,
     };
     let bytes = enc.encode_template_data(td).unwrap();
@@ -1345,7 +1345,7 @@ fn constant_string_field() {
 
     let td = TemplateData {
         name: "ConstStr".to_string(),
-        value: ValueData::Group(HashMap::new()),
+        value: ValueData::Group(Vec::new()),
         pmap_bytes: None,
     };
     let bytes = enc.encode_template_data(td).unwrap();
@@ -1381,7 +1381,7 @@ fn constant_negative_integer() {
     let mut enc = FastEncoder::new(&xml, Dictionary::Global).unwrap();
     let td = TemplateData {
         name: "ConstNeg".to_string(),
-        value: ValueData::Group(HashMap::new()),
+        value: ValueData::Group(Vec::new()),
         pmap_bytes: None,
     };
     let bytes = enc.encode_template_data(td).unwrap();

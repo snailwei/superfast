@@ -4,7 +4,7 @@
 //! representation before binary encoding.
 
 use serde::ser::{self, Serialize};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::template::TemplateData;
 use super::value::ValueData;
@@ -208,11 +208,11 @@ impl<'de> ser::Serializer for &'de mut ValueDataSerializer {
         Ok(self)
     }
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        self.value = ValueData::Group(HashMap::new());
+        self.value = ValueData::Group(Vec::new());
         Ok(self)
     }
     fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        self.value = ValueData::Group(HashMap::new());
+        self.value = ValueData::Group(Vec::new());
         self.pending_name = Some(name.to_string());
         Ok(self)
     }
@@ -234,7 +234,7 @@ impl<'de> ser::Serializer for &'de mut ValueDataSerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
-        self.value = ValueData::Group(HashMap::new());
+        self.value = ValueData::Group(Vec::new());
         Ok(self)
     }
 }
@@ -314,7 +314,7 @@ impl<'de> ser::SerializeMap for &'de mut ValueDataSerializer {
         let mut inner = ValueDataSerializer::default();
         value.serialize(&mut inner)?;
         if let ValueData::Group(g) = &mut self.value {
-            g.insert(key, inner.value);
+            g.push((Rc::from(key), inner.value));
         }
         Ok(())
     }
@@ -348,7 +348,7 @@ impl<'de> ser::SerializeStruct for &'de mut ValueDataSerializer {
         }
 
         if let ValueData::Group(g) = &mut self.value {
-            g.insert(key.to_string(), inner.value);
+            g.push((Rc::from(key), inner.value));
         }
         Ok(())
     }
@@ -357,12 +357,14 @@ impl<'de> ser::SerializeStruct for &'de mut ValueDataSerializer {
         // After collecting all fields, check if this is a Decimal struct
         // (exponent: i32, mantissa: i64) and convert to Value::Decimal
         if let ValueData::Group(ref g) = self.value {
+            let exp = g.iter().find(|(k, _)| k.as_ref() == "exponent").map(|(_, v)| v);
+            let mant = g.iter().find(|(k, _) | k.as_ref() == "mantissa").map(|(_, v)| v);
             if let (
                 Some(ValueData::Value(Some(Value::Int32(exp)))),
                 Some(ValueData::Value(Some(Value::Int64(mant)))),
-            ) = (g.get("exponent"), g.get("mantissa"))
+            ) = (exp.cloned(), mant.cloned())
             {
-                let d = Decimal::new(*exp, *mant);
+                let d = Decimal::new(exp, mant);
                 self.value = ValueData::Value(Some(Value::Decimal(d)));
                 return Ok(());
             }

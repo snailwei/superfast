@@ -5,9 +5,10 @@
 use crate::{Dictionary, FastDecoder, FastEncoder};
 use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
-use std::collections::HashMap;
+use std::rc::Rc;
 
 // =====================================================
 // Helpers for wire format tests
@@ -32,11 +33,11 @@ fn decimal_xml(optional: bool) -> String {
 }
 
 fn make_td(name: &str, value: ValueData) -> TemplateData {
-    let mut map = HashMap::new();
-    map.insert("Price".to_string(), value);
+    let mut vec = Vec::new();
+    vec.push((Rc::from("Price"), value));
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -239,7 +240,7 @@ fn decimal_roundtrip_mandatory() {
     } else {
         panic!("expected Group")
     };
-    let price = group.get("Price").unwrap();
+    let price = group_get(group, "Price").unwrap();
     if let ValueData::Value(Some(Value::Decimal(d))) = price {
         assert_eq!(d.exponent, -2);
         assert_eq!(d.mantissa, 942755);
@@ -266,7 +267,7 @@ fn decimal_roundtrip_positive_exponent() {
     } else {
         panic!("expected Group")
     };
-    let price = group.get("Price").unwrap();
+    let price = group_get(group, "Price").unwrap();
     if let ValueData::Value(Some(Value::Decimal(d))) = price {
         assert_eq!(d.exponent, 2);
         assert_eq!(d.mantissa, 942755);
@@ -293,7 +294,7 @@ fn decimal_roundtrip_negative_value() {
     } else {
         panic!("expected Group")
     };
-    let price = group.get("Price").unwrap();
+    let price = group_get(group, "Price").unwrap();
     if let ValueData::Value(Some(Value::Decimal(d))) = price {
         assert_eq!(d.exponent, -2);
         assert_eq!(d.mantissa, -942755);
@@ -320,7 +321,7 @@ fn decimal_roundtrip_zero() {
     } else {
         panic!("expected Group")
     };
-    let price = group.get("Price").unwrap();
+    let price = group_get(group, "Price").unwrap();
     if let ValueData::Value(Some(Value::Decimal(d))) = price {
         assert_eq!(d.exponent, 0);
         assert_eq!(d.mantissa, 0);
@@ -344,7 +345,7 @@ fn decimal_roundtrip_optional_absent() {
     } else {
         panic!("expected Group")
     };
-    let price = group.get("Price").unwrap();
+    let price = group_get(group, "Price").unwrap();
     assert!(
         matches!(price, ValueData::Value(None)),
         "expected None, got: {:?}",

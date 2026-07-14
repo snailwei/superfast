@@ -7,10 +7,11 @@
 
 use crate::decimal::Decimal;
 use crate::model::template::TemplateData;
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn make_val(v: Value) -> ValueData {
     ValueData::Value(Some(v))
@@ -21,13 +22,13 @@ fn make_none() -> ValueData {
 }
 
 fn make_td(fields: &[(&str, ValueData)]) -> TemplateData {
-    let mut map = HashMap::new();
+    let mut vec = Vec::new();
     for (name, value) in fields {
-        map.insert(name.to_string(), value.clone());
+        vec.push((Rc::from(*name), value.clone()));
     }
     TemplateData {
         name: "MarketData".to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -163,32 +164,32 @@ fn spec_xml() -> String {
 fn spec_minimal_first_message() {
     let xml = spec_xml();
     let seq = ValueData::Sequence(vec![ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MDUpdateAction".to_string(), make_val(Value::UInt32(0))); // Add
-        m.insert(
-            "MDEntryPx".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MDUpdateAction"), make_val(Value::UInt32(0)))); // Add
+        m.push((
+            Rc::from("MDEntryPx"),
             make_val(Value::Decimal(Decimal {
                 exponent: -2,
                 mantissa: 12345,
             })),
-        );
-        m.insert(
-            "MDEntrySize".to_string(),
+        ));
+        m.push((
+            Rc::from("MDEntrySize"),
             make_val(Value::Decimal(Decimal {
                 exponent: 0,
                 mantissa: 100,
             })),
-        );
+        ));
         m
     })]);
 
     let header = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(1))); // increment from 1 → 1
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(1)))); // increment from 1 → 1
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCHANGE".to_string())),
-        );
+        ));
         m
     });
     let td = make_td(&[
@@ -236,28 +237,28 @@ fn spec_minimal_first_message() {
     // Verify decoded values
     if let ValueData::Group(g) = &tpl.value {
         // Header: constants are implicit, check increment and copy
-        if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = g.get("MsgSeqNum") {
+        if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = group_get(g, "MsgSeqNum") {
             assert_eq!(*seq, 1, "MsgSeqNum should be 1 (increment from initial 1)");
         } else {
             panic!("MsgSeqNum missing");
         }
-        if let Some(ValueData::Value(Some(Value::AsciiString(sender)))) = g.get("SenderCompID") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(sender)))) = group_get(g, "SenderCompID") {
             assert_eq!(sender.as_str(), "EXCHANGE");
         } else {
             panic!("SenderCompID missing");
         }
         // MarketData
-        if let Some(ValueData::Value(Some(Value::UInt64(ts)))) = g.get("Timestamp") {
+        if let Some(ValueData::Value(Some(Value::UInt64(ts)))) = group_get(g, "Timestamp") {
             assert_eq!(*ts, 1700000000000);
         } else {
             panic!("Timestamp missing");
         }
-        if let Some(ValueData::Value(Some(Value::AsciiString(sym)))) = g.get("Symbol") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(sym)))) = group_get(g, "Symbol") {
             assert_eq!(sym.as_str(), "AAPL");
         } else {
             panic!("Symbol missing");
         }
-        if let Some(ValueData::Value(Some(Value::AsciiString(desc)))) = g.get("SecurityDesc") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(desc)))) = group_get(g, "SecurityDesc") {
             assert_eq!(desc.as_str(), "Apple Inc");
         } else {
             panic!("SecurityDesc missing");
@@ -281,32 +282,32 @@ fn spec_minimal_second_message_compression() {
 
     // --- Message 1: establish context ---
     let seq1 = ValueData::Sequence(vec![ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MDUpdateAction".to_string(), make_val(Value::UInt32(0)));
-        m.insert(
-            "MDEntryPx".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MDUpdateAction"), make_val(Value::UInt32(0))));
+        m.push((
+            Rc::from("MDEntryPx"),
             make_val(Value::Decimal(Decimal {
                 exponent: -2,
                 mantissa: 10000,
             })),
-        );
-        m.insert(
-            "MDEntrySize".to_string(),
+        ));
+        m.push((
+            Rc::from("MDEntrySize"),
             make_val(Value::Decimal(Decimal {
                 exponent: 0,
                 mantissa: 100,
             })),
-        );
+        ));
         m
     })]);
 
     let header1 = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(1)));
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(1))));
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCHANGE".to_string())),
-        );
+        ));
         m
     });
     let td1 = make_td(&[
@@ -364,66 +365,66 @@ fn spec_minimal_second_message_compression() {
     // ExtendedAttributes: optional group, present with data (send)
     // MDEntries: sequence with length delta 1 → 2
     let ext_attrs = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert(
-            "AttrKey".to_string(),
+        let mut m = Vec::new();
+        m.push((
+            Rc::from("AttrKey"),
             make_val(Value::AsciiString("currency".to_string())),
-        );
-        m.insert(
-            "AttrValue".to_string(),
+        ));
+        m.push((
+            Rc::from("AttrValue"),
             make_val(Value::AsciiString("USD".to_string())),
-        );
+        ));
         m
     });
 
     let seq2 = ValueData::Sequence(vec![
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("MDUpdateAction".to_string(), make_val(Value::UInt32(0)));
-            m.insert(
-                "MDEntryPx".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("MDUpdateAction"), make_val(Value::UInt32(0))));
+            m.push((
+                Rc::from("MDEntryPx"),
                 make_val(Value::Decimal(Decimal {
                     exponent: -2,
                     mantissa: 10010,
                 })),
-            );
-            m.insert(
-                "MDEntrySize".to_string(),
+            ));
+            m.push((
+                Rc::from("MDEntrySize"),
                 make_val(Value::Decimal(Decimal {
                     exponent: 0,
                     mantissa: 200,
                 })),
-            );
+            ));
             m
         }),
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("MDUpdateAction".to_string(), make_val(Value::UInt32(1))); // Delete
-            m.insert(
-                "MDEntryPx".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("MDUpdateAction"), make_val(Value::UInt32(1)))); // Delete
+            m.push((
+                Rc::from("MDEntryPx"),
                 make_val(Value::Decimal(Decimal {
                     exponent: -2,
                     mantissa: 9999,
                 })),
-            );
-            m.insert(
-                "MDEntrySize".to_string(),
+            ));
+            m.push((
+                Rc::from("MDEntrySize"),
                 make_val(Value::Decimal(Decimal {
                     exponent: 0,
                     mantissa: 50,
                 })),
-            );
+            ));
             m
         }),
     ]);
 
     let header2 = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(2)));
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(2))));
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCHANGE".to_string())),
-        );
+        ));
         m
     });
     let td2 = make_td(&[
@@ -479,32 +480,32 @@ fn spec_minimal_second_message_compression() {
 
     if let ValueData::Group(g) = &data2.value {
         // MsgSeqNum incremented
-        if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = g.get("MsgSeqNum") {
+        if let Some(ValueData::Value(Some(Value::UInt32(seq)))) = group_get(g, "MsgSeqNum") {
             assert_eq!(*seq, 2);
         } else {
             panic!("MsgSeqNum missing");
         }
         // SenderCompID copied from previous
-        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = g.get("SenderCompID") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = group_get(g, "SenderCompID") {
             assert_eq!(s.as_str(), "EXCHANGE");
         } else {
             panic!("SenderCompID missing");
         }
         // MarketSegment defaulted to 0
-        if let Some(ValueData::Value(Some(Value::Int32(seg)))) = g.get("MarketSegment") {
+        if let Some(ValueData::Value(Some(Value::Int32(seg)))) = group_get(g, "MarketSegment") {
             assert_eq!(*seg, 0);
         } else {
             panic!("MarketSegment missing");
         }
         // SecurityDesc: tail updated "Apple Inc" → "Apple Inc."
-        if let Some(ValueData::Value(Some(Value::AsciiString(d)))) = g.get("SecurityDesc") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(d)))) = group_get(g, "SecurityDesc") {
             assert_eq!(d.as_str(), "Apple Inc.");
         } else {
             panic!("SecurityDesc missing");
         }
         // ExtendedAttributes: optional group present
-        if let Some(ValueData::Group(agg)) = g.get("ExtendedAttributes") {
-            if let Some(ValueData::Value(Some(Value::AsciiString(v)))) = agg.get("AttrKey") {
+        if let Some(ValueData::Group(agg)) = group_get(g, "ExtendedAttributes") {
+            if let Some(ValueData::Value(Some(Value::AsciiString(v)))) = group_get(agg, "AttrKey") {
                 assert_eq!(v.as_str(), "currency");
             } else {
                 panic!("AttrKey missing");
@@ -525,12 +526,12 @@ fn spec_minimal_second_message_compression() {
 fn spec_minimal_optional_fields_absent() {
     let xml = spec_xml();
     let header = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(1)));
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(1))));
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCHANGE".to_string())),
-        );
+        ));
         m
     });
     let td = make_td(&[
@@ -566,7 +567,7 @@ fn spec_minimal_optional_fields_absent() {
 
     let tpl = roundtrip(&xml, td);
     if let ValueData::Group(g) = &tpl.value {
-        if let Some(ValueData::Value(Some(Value::AsciiString(sym)))) = g.get("Symbol") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(sym)))) = group_get(g, "Symbol") {
             assert_eq!(sym.as_str(), "GOOG");
         } else {
             panic!("Symbol missing");
@@ -593,12 +594,12 @@ fn spec_minimal_copy_dictionary_isolation() {
 
     // Message 1
     let header1 = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(1)));
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(1))));
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCH1".to_string())),
-        );
+        ));
         m
     });
     let td1 = make_td(&[
@@ -636,12 +637,12 @@ fn spec_minimal_copy_dictionary_isolation() {
 
     // Message 2: change SenderCompID but keep Symbol
     let header2 = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("MsgSeqNum".to_string(), make_val(Value::UInt32(2)));
-        m.insert(
-            "SenderCompID".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("MsgSeqNum"), make_val(Value::UInt32(2))));
+        m.push((
+            Rc::from("SenderCompID"),
             make_val(Value::AsciiString("EXCH2".to_string())),
-        );
+        ));
         m
     });
     let td2 = make_td(&[
@@ -679,13 +680,13 @@ fn spec_minimal_copy_dictionary_isolation() {
 
     if let ValueData::Group(g) = &data2.value {
         // SenderCompID changed to EXCH2
-        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = g.get("SenderCompID") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = group_get(g, "SenderCompID") {
             assert_eq!(s.as_str(), "EXCH2");
         } else {
             panic!("SenderCompID missing");
         }
         // Symbol still AAPL (copy from previous, different dictionary)
-        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = g.get("Symbol") {
+        if let Some(ValueData::Value(Some(Value::AsciiString(s)))) = group_get(g, "Symbol") {
             assert_eq!(s.as_str(), "AAPL");
         } else {
             panic!("Symbol missing");

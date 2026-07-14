@@ -9,23 +9,24 @@
 //! - typeRef (as template attribute)
 
 use crate::model::template::TemplateData;
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 // ============================================================
 // Helpers
 // ============================================================
 
 fn make_td(name: &str, fields: &[(&str, ValueData)]) -> TemplateData {
-    let mut map = HashMap::new();
+    let mut vec = Vec::new();
     for (k, v) in fields {
-        map.insert(k.to_string(), v.clone());
+        vec.push((Rc::from(*k), v.clone()));
     }
     TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -55,7 +56,7 @@ fn roundtrip(xml: &str, td: TemplateData) -> TemplateData {
 
 fn get_field<'a>(tpl: &'a TemplateData, field: &str) -> &'a ValueData {
     if let ValueData::Group(ref g) = tpl.value {
-        g.get(field)
+        group_get(g, field)
             .unwrap_or_else(|| panic!("field '{}' not found in decoded template", field))
     } else {
         panic!("expected ValueData::Group, got: {:?}", tpl.value)
@@ -79,12 +80,12 @@ fn group_mandatory_roundtrip() {
   </template>
 </templates>"#;
     let inner = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("InnerVal".to_string(), make_val(Value::UInt32(42)));
-        m.insert(
-            "InnerTxt".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("InnerVal"), make_val(Value::UInt32(42))));
+        m.push((
+            Rc::from("InnerTxt"),
             make_val(Value::AsciiString("hello".to_string())),
-        );
+        ));
         m
     });
     let td = make_td(
@@ -95,9 +96,9 @@ fn group_mandatory_roundtrip() {
 
     assert_eq!(*get_field(&tpl, "Outer"), make_val(Value::UInt32(100)));
     if let ValueData::Group(g) = get_field(&tpl, "Inner") {
-        assert_eq!(g.get("InnerVal").unwrap(), &make_val(Value::UInt32(42)));
+        assert_eq!(group_get(g, "InnerVal").unwrap(), &make_val(Value::UInt32(42)));
         assert_eq!(
-            g.get("InnerTxt").unwrap(),
+            group_get(g, "InnerTxt").unwrap(),
             &make_val(Value::AsciiString("hello".to_string()))
         );
     } else {
@@ -118,9 +119,9 @@ fn group_mandatory_with_optional_fields() {
   </template>
 </templates>"#;
     let inner = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("InnerVal".to_string(), make_val(Value::UInt32(7)));
-        m.insert("InnerTxt".to_string(), make_none());
+        let mut m = Vec::new();
+        m.push((Rc::from("InnerVal"), make_val(Value::UInt32(7))));
+        m.push((Rc::from("InnerTxt"), make_none()));
         m
     });
     let td = make_td(
@@ -130,8 +131,8 @@ fn group_mandatory_with_optional_fields() {
     let tpl = roundtrip(xml, td);
 
     if let ValueData::Group(g) = get_field(&tpl, "Inner") {
-        assert_eq!(g.get("InnerVal").unwrap(), &make_val(Value::UInt32(7)));
-        assert_eq!(g.get("InnerTxt").unwrap(), &make_none());
+        assert_eq!(group_get(g, "InnerVal").unwrap(), &make_val(Value::UInt32(7)));
+        assert_eq!(group_get(g, "InnerTxt").unwrap(), &make_none());
     }
 }
 
@@ -147,8 +148,8 @@ fn group_optional_present() {
   </template>
 </templates>"#;
     let inner = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("InnerVal".to_string(), make_val(Value::UInt32(99)));
+        let mut m = Vec::new();
+        m.push((Rc::from("InnerVal"), make_val(Value::UInt32(99))));
         m
     });
     let td = make_td(
@@ -158,7 +159,7 @@ fn group_optional_present() {
     let tpl = roundtrip(xml, td);
 
     if let ValueData::Group(g) = get_field(&tpl, "Inner") {
-        assert_eq!(g.get("InnerVal").unwrap(), &make_val(Value::UInt32(99)));
+        assert_eq!(group_get(g, "InnerVal").unwrap(), &make_val(Value::UInt32(99)));
     } else {
         panic!("expected group");
     }
@@ -185,9 +186,9 @@ fn group_optional_absent() {
 
     if let ValueData::Group(g) = &tpl.value {
         assert!(
-            matches!(g.get("Inner"), Some(&ValueData::None) | None),
+            matches!(group_get(g, "Inner"), Some(&ValueData::None) | None),
             "expected group to be absent, got: {:?}",
-            g.get("Inner")
+            group_get(g, "Inner")
         );
     }
 }
@@ -210,23 +211,23 @@ fn group_nested_three_levels() {
   </template>
 </templates>"#;
     let inner = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("InnerVal".to_string(), make_val(Value::UInt32(123)));
+        let mut m = Vec::new();
+        m.push((Rc::from("InnerVal"), make_val(Value::UInt32(123))));
         m
     });
     let middle = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert(
-            "MiddleTxt".to_string(),
+        let mut m = Vec::new();
+        m.push((
+            Rc::from("MiddleTxt"),
             make_val(Value::AsciiString("mid".to_string())),
-        );
-        m.insert("Inner".to_string(), inner);
+        ));
+        m.push((Rc::from("Inner"), inner));
         m
     });
     let outer = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("OuterVal".to_string(), make_val(Value::UInt32(1)));
-        m.insert("Middle".to_string(), middle);
+        let mut m = Vec::new();
+        m.push((Rc::from("OuterVal"), make_val(Value::UInt32(1))));
+        m.push((Rc::from("Middle"), middle));
         m
     });
     let td = make_td("Root", &[("Outer", outer)]);
@@ -234,9 +235,9 @@ fn group_nested_three_levels() {
 
     // Navigate: Root -> Outer -> Middle -> Inner
     if let ValueData::Group(outer_g) = get_field(&tpl, "Outer") {
-        if let ValueData::Group(middle_g) = outer_g.get("Middle").unwrap() {
-            if let ValueData::Group(inner_g) = middle_g.get("Inner").unwrap() {
-                if let ValueData::Value(Some(Value::UInt32(v))) = inner_g.get("InnerVal").unwrap() {
+        if let ValueData::Group(middle_g) = group_get(outer_g, "Middle").unwrap() {
+            if let ValueData::Group(inner_g) = group_get(middle_g, "Inner").unwrap() {
+                if let ValueData::Value(Some(Value::UInt32(v))) = group_get(inner_g, "InnerVal").unwrap() {
                     assert_eq!(*v, 123);
                 } else {
                     panic!("expected UInt32(123)");
@@ -292,8 +293,8 @@ fn sequence_empty() {
 fn sequence_single_item() {
     let xml = seq_xml_basic();
     let item = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("ItemVal".to_string(), make_val(Value::UInt32(42)));
+        let mut m = Vec::new();
+        m.push((Rc::from("ItemVal"), make_val(Value::UInt32(42))));
         m
     });
     let td = make_td(
@@ -308,7 +309,7 @@ fn sequence_single_item() {
     if let ValueData::Sequence(items) = get_field(&tpl, "Items") {
         assert_eq!(items.len(), 1);
         if let ValueData::Group(g) = &items[0] {
-            assert_eq!(g.get("ItemVal").unwrap(), &make_val(Value::UInt32(42)));
+            assert_eq!(group_get(g, "ItemVal").unwrap(), &make_val(Value::UInt32(42)));
         }
     } else {
         panic!("expected sequence");
@@ -321,8 +322,8 @@ fn sequence_multiple_items() {
     let items: Vec<ValueData> = (0..5)
         .map(|i| {
             ValueData::Group({
-                let mut m = HashMap::new();
-                m.insert("ItemVal".to_string(), make_val(Value::UInt32(i * 100)));
+                let mut m = Vec::new();
+                m.push((Rc::from("ItemVal"), make_val(Value::UInt32(i * 100))));
                 m
             })
         })
@@ -341,7 +342,7 @@ fn sequence_multiple_items() {
         for (i, item) in items.iter().enumerate() {
             if let ValueData::Group(g) = item {
                 assert_eq!(
-                    g.get("ItemVal").unwrap(),
+                    group_get(g, "ItemVal").unwrap(),
                     &make_val(Value::UInt32((i as u32) * 100))
                 );
             }
@@ -365,21 +366,21 @@ fn sequence_multi_field_items() {
 </templates>"#;
     let items = vec![
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("Id".to_string(), make_val(Value::UInt32(1)));
-            m.insert(
-                "Name".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("Id"), make_val(Value::UInt32(1))));
+            m.push((
+                Rc::from("Name"),
                 make_val(Value::AsciiString("alpha".to_string())),
-            );
+            ));
             m
         }),
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("Id".to_string(), make_val(Value::UInt32(2)));
-            m.insert(
-                "Name".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("Id"), make_val(Value::UInt32(2))));
+            m.push((
+                Rc::from("Name"),
                 make_val(Value::AsciiString("beta".to_string())),
-            );
+            ));
             m
         }),
     ];
@@ -405,18 +406,18 @@ fn sequence_with_pmap_per_item() {
 </templates>"#;
     let items = vec![
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("Id".to_string(), make_val(Value::UInt32(1)));
-            m.insert(
-                "Name".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("Id"), make_val(Value::UInt32(1))));
+            m.push((
+                Rc::from("Name"),
                 make_val(Value::AsciiString("hello".to_string())),
-            );
+            ));
             m
         }),
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("Id".to_string(), make_val(Value::UInt32(2)));
-            m.insert("Name".to_string(), make_none());
+            let mut m = Vec::new();
+            m.push((Rc::from("Id"), make_val(Value::UInt32(2))));
+            m.push((Rc::from("Name"), make_none()));
             m
         }),
     ];
@@ -427,12 +428,12 @@ fn sequence_with_pmap_per_item() {
         assert_eq!(items.len(), 2);
         if let ValueData::Group(g0) = &items[0] {
             assert_eq!(
-                g0.get("Name").unwrap(),
+                group_get(g0, "Name").unwrap(),
                 &make_val(Value::AsciiString("hello".to_string()))
             );
         }
         if let ValueData::Group(g1) = &items[1] {
-            assert_eq!(g1.get("Name").unwrap(), &make_none());
+            assert_eq!(group_get(g1, "Name").unwrap(), &make_none());
         }
     }
 }
@@ -475,13 +476,13 @@ fn sequence_inside_group() {
   </template>
 </templates>"#;
     let header = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("HeaderVal".to_string(), make_val(Value::UInt32(99)));
+        let mut m = Vec::new();
+        m.push((Rc::from("HeaderVal"), make_val(Value::UInt32(99))));
         m
     });
     let items = vec![ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("ItemVal".to_string(), make_val(Value::UInt32(1)));
+        let mut m = Vec::new();
+        m.push((Rc::from("ItemVal"), make_val(Value::UInt32(1))));
         m
     })];
     let td = make_td(
@@ -514,12 +515,12 @@ fn templateref_static_roundtrip() {
   </template>
 </templates>"#;
     let header = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("HeaderVal".to_string(), make_val(Value::UInt32(42)));
-        m.insert(
-            "HeaderTxt".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("HeaderVal"), make_val(Value::UInt32(42))));
+        m.push((
+            Rc::from("HeaderTxt"),
             make_val(Value::AsciiString("hi".to_string())),
-        );
+        ));
         m
     });
     let td = make_td(
@@ -561,29 +562,28 @@ fn templateref_dynamic_roundtrip() {
 </templates>"#;
 
     let payload = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("PayloadVal".to_string(), make_val(Value::UInt32(777)));
-        m.insert(
-            "PayloadTxt".to_string(),
+        let mut m = Vec::new();
+        m.push((Rc::from("PayloadVal"), make_val(Value::UInt32(777))));
+        m.push((
+            Rc::from("PayloadTxt"),
             make_val(Value::AsciiString("dyn".to_string())),
-        );
+        ));
         m
     });
     // For dynamic templateRef, the DynamicTemplateRef IS the data at the instruction level
-    let mut map = HashMap::new();
-    map.insert("Outer".to_string(), make_val(Value::UInt32(1)));
+    let mut map = Vec::new();
+    map.push((Rc::from("Outer"), make_val(Value::UInt32(1))));
     // The encoder's encode_template_ref_buf matches on ValueData::DynamicTemplateRef directly
-    map.insert(
-        "".to_string(),
+    map.push((
+        Rc::from(""),
         ValueData::DynamicTemplateRef(Box::new(TemplateData {
             name: "DynamicPayload".to_string(),
             value: payload,
             pmap_bytes: None,
         })),
-    );
-    map.insert(
-        "Footer".to_string(),
-        make_val(Value::AsciiString("end".to_string())),
+    ));
+    map.push(
+        (Rc::from("Footer"), make_val(Value::AsciiString("end".to_string()))),
     );
     let td = TemplateData {
         name: "Root".to_string(),
@@ -602,7 +602,7 @@ fn templateref_dynamic_roundtrip() {
     if let ValueData::DynamicTemplateRef(tpl_data) = tpl_ref {
         assert_eq!(tpl_data.name, "DynamicPayload");
         if let ValueData::Group(g) = &tpl_data.value {
-            assert_eq!(g.get("PayloadVal").unwrap(), &make_val(Value::UInt32(777)));
+            assert_eq!(group_get(g, "PayloadVal").unwrap(), &make_val(Value::UInt32(777)));
         }
     } else {
         panic!("expected DynamicTemplateRef, got: {:?}", tpl_ref);
@@ -627,28 +627,28 @@ fn templateref_dynamic_multiple() {
     let mut enc = FastEncoder::new(xml, Dictionary::Global).unwrap();
 
     // First message
-    let mut map1 = HashMap::new();
-    map1.insert("Outer".to_string(), make_val(Value::UInt32(100)));
-    map1.insert(
-        "".to_string(),
+    let mut map1 = Vec::new();
+    map1.push((Rc::from("Outer"), make_val(Value::UInt32(100))));
+    map1.push((
+        Rc::from(""),
         ValueData::DynamicTemplateRef(Box::new(TemplateData {
             name: "DynamicPayload".to_string(),
             value: ValueData::Group({
-                let mut m = HashMap::new();
-                m.insert("PayloadVal".to_string(), make_val(Value::UInt32(1)));
-                m.insert(
-                    "PayloadTxt".to_string(),
+                let mut m = Vec::new();
+                m.push((Rc::from("PayloadVal"), make_val(Value::UInt32(1))));
+                m.push((
+                    Rc::from("PayloadTxt"),
                     make_val(Value::AsciiString("first".to_string())),
-                );
+                ));
                 m
             }),
             pmap_bytes: None,
         })),
-    );
-    map1.insert(
-        "Footer".to_string(),
+    ));
+    map1.push((
+        Rc::from("Footer"),
         make_val(Value::AsciiString("v1".to_string())),
-    );
+    ));
     let td1 = TemplateData {
         name: "Root".to_string(),
         value: ValueData::Group(map1),
@@ -657,28 +657,28 @@ fn templateref_dynamic_multiple() {
     let bytes1 = enc.encode_template_data(td1).unwrap();
 
     // Second message
-    let mut map2 = HashMap::new();
-    map2.insert("Outer".to_string(), make_val(Value::UInt32(200)));
-    map2.insert(
-        "".to_string(),
+    let mut map2 = Vec::new();
+    map2.push((Rc::from("Outer"), make_val(Value::UInt32(200))));
+    map2.push((
+        Rc::from(""),
         ValueData::DynamicTemplateRef(Box::new(TemplateData {
             name: "DynamicPayload".to_string(),
             value: ValueData::Group({
-                let mut m = HashMap::new();
-                m.insert("PayloadVal".to_string(), make_val(Value::UInt32(2)));
-                m.insert(
-                    "PayloadTxt".to_string(),
+                let mut m = Vec::new();
+                m.push((Rc::from("PayloadVal"), make_val(Value::UInt32(2))));
+                m.push((
+                    Rc::from("PayloadTxt"),
                     make_val(Value::AsciiString("second".to_string())),
-                );
+                ));
                 m
             }),
             pmap_bytes: None,
         })),
-    );
-    map2.insert(
-        "Footer".to_string(),
+    ));
+    map2.push((
+        Rc::from("Footer"),
         make_val(Value::AsciiString("v2".to_string())),
-    );
+    ));
     let td2 = TemplateData {
         name: "Root".to_string(),
         value: ValueData::Group(map2),
@@ -774,17 +774,17 @@ fn typeref_group_child_element() {
   </template>
 </templates>"#;
     let payload = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("Val".to_string(), make_val(Value::UInt32(99)));
-        m.insert("Txt".to_string(), make_none());
+        let mut m = Vec::new();
+        m.push((Rc::from("Val"), make_val(Value::UInt32(99))));
+        m.push((Rc::from("Txt"), make_none()));
         m
     });
     let td = make_td("Root", &[("Payload", payload)]);
     let tpl = roundtrip(xml, td);
 
     if let ValueData::Group(g) = get_field(&tpl, "Payload") {
-        assert_eq!(g.get("Val").unwrap(), &make_val(Value::UInt32(99)));
-        assert_eq!(g.get("Txt").unwrap(), &make_none());
+        assert_eq!(group_get(g, "Val").unwrap(), &make_val(Value::UInt32(99)));
+        assert_eq!(group_get(g, "Txt").unwrap(), &make_none());
     }
 }
 
@@ -801,8 +801,8 @@ fn typeref_sequence_child_element() {
   </template>
 </templates>"#;
     let items = vec![ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("ItemVal".to_string(), make_val(Value::UInt32(1)));
+        let mut m = Vec::new();
+        m.push((Rc::from("ItemVal"), make_val(Value::UInt32(1))));
         m
     })];
     let td = make_td("Root", &[("Items", ValueData::Sequence(items))]);
@@ -811,7 +811,7 @@ fn typeref_sequence_child_element() {
     if let ValueData::Sequence(seq) = get_field(&tpl, "Items") {
         assert_eq!(seq.len(), 1);
         if let ValueData::Group(g) = &seq[0] {
-            assert_eq!(g.get("ItemVal").unwrap(), &make_val(Value::UInt32(1)));
+            assert_eq!(group_get(g, "ItemVal").unwrap(), &make_val(Value::UInt32(1)));
         }
     }
 }
@@ -827,15 +827,15 @@ fn typeref_group_attribute() {
   </template>
 </templates>"#;
     let payload = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("Val".to_string(), make_val(Value::UInt32(77)));
+        let mut m = Vec::new();
+        m.push((Rc::from("Val"), make_val(Value::UInt32(77))));
         m
     });
     let td = make_td("Root", &[("Payload", payload)]);
     let tpl = roundtrip(xml, td);
 
     if let ValueData::Group(g) = get_field(&tpl, "Payload") {
-        assert_eq!(g.get("Val").unwrap(), &make_val(Value::UInt32(77)));
+        assert_eq!(group_get(g, "Val").unwrap(), &make_val(Value::UInt32(77)));
     }
 }
 
@@ -851,8 +851,8 @@ fn typeref_sequence_attribute() {
   </template>
 </templates>"#;
     let items = vec![ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("ItemVal".to_string(), make_val(Value::UInt32(42)));
+        let mut m = Vec::new();
+        m.push((Rc::from("ItemVal"), make_val(Value::UInt32(42))));
         m
     })];
     let td = make_td("Root", &[("Items", ValueData::Sequence(items))]);
@@ -861,7 +861,7 @@ fn typeref_sequence_attribute() {
     if let ValueData::Sequence(seq) = get_field(&tpl, "Items") {
         assert_eq!(seq.len(), 1);
         if let ValueData::Group(g) = &seq[0] {
-            assert_eq!(g.get("ItemVal").unwrap(), &make_val(Value::UInt32(42)));
+            assert_eq!(group_get(g, "ItemVal").unwrap(), &make_val(Value::UInt32(42)));
         }
     }
 }
@@ -1044,24 +1044,24 @@ fn typeref_group_namespace_isolation() {
             (
                 "BidSide",
                 ValueData::Group({
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "Side".to_string(),
+                    let mut m = Vec::new();
+                    m.push((
+                        Rc::from("Side"),
                         make_val(Value::AsciiString("BID".to_string())),
-                    );
-                    m.insert("Px".to_string(), make_val(Value::UInt32(100)));
+                    ));
+                    m.push((Rc::from("Px"), make_val(Value::UInt32(100))));
                     m
                 }),
             ),
             (
                 "AskSide",
                 ValueData::Group({
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "Side".to_string(),
+                    let mut m = Vec::new();
+                    m.push((
+                        Rc::from("Side"),
                         make_val(Value::AsciiString("ASK".to_string())),
-                    );
-                    m.insert("Px".to_string(), make_val(Value::UInt32(200)));
+                    ));
+                    m.push((Rc::from("Px"), make_val(Value::UInt32(200))));
                     m
                 }),
             ),
@@ -1076,24 +1076,24 @@ fn typeref_group_namespace_isolation() {
             (
                 "BidSide",
                 ValueData::Group({
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "Side".to_string(),
+                    let mut m = Vec::new();
+                    m.push((
+                        Rc::from("Side"),
                         make_val(Value::AsciiString("BID".to_string())),
-                    );
-                    m.insert("Px".to_string(), make_val(Value::UInt32(100)));
+                    ));
+                    m.push((Rc::from("Px"), make_val(Value::UInt32(100))));
                     m
                 }),
             ),
             (
                 "AskSide",
                 ValueData::Group({
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "Side".to_string(),
+                    let mut m = Vec::new();
+                    m.push((
+                        Rc::from("Side"),
                         make_val(Value::AsciiString("ASK".to_string())),
-                    );
-                    m.insert("Px".to_string(), make_val(Value::UInt32(200)));
+                    ));
+                    m.push((Rc::from("Px"), make_val(Value::UInt32(200))));
                     m
                 }),
             ),
@@ -1139,12 +1139,12 @@ fn typeref_nested_override_isolation() {
             (
                 "Inner",
                 ValueData::Group({
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "Label".to_string(),
+                    let mut m = Vec::new();
+                    m.push((
+                        Rc::from("Label"),
                         make_val(Value::AsciiString("inner".to_string())),
-                    );
-                    m.insert("Val".to_string(), make_val(Value::UInt32(42)));
+                    ));
+                    m.push((Rc::from("Val"), make_val(Value::UInt32(42))));
                     m
                 }),
             ),
@@ -1159,10 +1159,10 @@ fn typeref_nested_override_isolation() {
     );
     if let ValueData::Group(g) = get_field(&tpl, "Inner") {
         assert_eq!(
-            g.get("Label").unwrap(),
+            group_get(g, "Label").unwrap(),
             &make_val(Value::AsciiString("inner".to_string()))
         );
-        assert_eq!(g.get("Val").unwrap(), &make_val(Value::UInt32(42)));
+        assert_eq!(group_get(g, "Val").unwrap(), &make_val(Value::UInt32(42)));
     }
 }
 
@@ -1186,35 +1186,35 @@ fn group_containing_sequence() {
 </templates>"#;
     let entries = vec![
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("EntryVal".to_string(), make_val(Value::UInt32(1)));
-            m.insert(
-                "EntryTxt".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("EntryVal"), make_val(Value::UInt32(1))));
+            m.push((
+                Rc::from("EntryTxt"),
                 make_val(Value::AsciiString("a".to_string())),
-            );
+            ));
             m
         }),
         ValueData::Group({
-            let mut m = HashMap::new();
-            m.insert("EntryVal".to_string(), make_val(Value::UInt32(2)));
-            m.insert(
-                "EntryTxt".to_string(),
+            let mut m = Vec::new();
+            m.push((Rc::from("EntryVal"), make_val(Value::UInt32(2))));
+            m.push((
+                Rc::from("EntryTxt"),
                 make_val(Value::AsciiString("b".to_string())),
-            );
+            ));
             m
         }),
     ];
     let container = ValueData::Group({
-        let mut m = HashMap::new();
-        m.insert("Count".to_string(), make_val(Value::UInt32(2)));
-        m.insert("Entries".to_string(), ValueData::Sequence(entries));
+        let mut m = Vec::new();
+        m.push((Rc::from("Count"), make_val(Value::UInt32(2))));
+        m.push((Rc::from("Entries"), ValueData::Sequence(entries)));
         m
     });
     let td = make_td("Root", &[("Container", container)]);
     let tpl = roundtrip(xml, td);
 
     if let ValueData::Group(g) = get_field(&tpl, "Container") {
-        if let ValueData::Sequence(seq) = g.get("Entries").unwrap() {
+        if let ValueData::Sequence(seq) = group_get(g, "Entries").unwrap() {
             assert_eq!(seq.len(), 2);
         }
     }
@@ -1238,17 +1238,17 @@ fn sequence_containing_group() {
   </template>
 </templates>"#;
     let rows = vec![ValueData::Group({
-        let mut m = HashMap::new();
+        let mut m = Vec::new();
         let row = ValueData::Group({
-            let mut r = HashMap::new();
-            r.insert("RowId".to_string(), make_val(Value::UInt32(1)));
-            r.insert(
-                "RowName".to_string(),
+            let mut r = Vec::new();
+            r.push((Rc::from("RowId"), make_val(Value::UInt32(1))));
+            r.push((
+                Rc::from("RowName"),
                 make_val(Value::AsciiString("first".to_string())),
-            );
+            ));
             r
         });
-        m.insert("Row".to_string(), row);
+        m.push((Rc::from("Row"), row));
         m
     })];
     let td = make_td("Root", &[("Rows", ValueData::Sequence(rows))]);
@@ -1257,8 +1257,8 @@ fn sequence_containing_group() {
     if let ValueData::Sequence(seq) = get_field(&tpl, "Rows") {
         assert_eq!(seq.len(), 1);
         if let ValueData::Group(g) = &seq[0] {
-            if let ValueData::Group(row) = g.get("Row").unwrap() {
-                assert_eq!(row.get("RowId").unwrap(), &make_val(Value::UInt32(1)));
+            if let ValueData::Group(row) = group_get(g, "Row").unwrap() {
+                assert_eq!(group_get(row, "RowId").unwrap(), &make_val(Value::UInt32(1)));
             }
         }
     }

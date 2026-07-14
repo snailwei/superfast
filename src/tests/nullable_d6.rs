@@ -4,17 +4,18 @@
 //! mandatory+nullable fields can decode as empty (None), triggering ERR D6
 //! on subsequent messages where the field is absent.
 
+use crate::model::value::group_get;
 use crate::model::value::ValueData;
 use crate::value::Value;
 use crate::{Dictionary, FastDecoder, FastEncoder};
-use std::collections::HashMap;
+use std::rc::Rc;
 
 fn make_td(name: &str, field: &str, value: ValueData) -> crate::model::template::TemplateData {
-    let mut map = HashMap::new();
-    map.insert(field.to_string(), value);
+    let mut vec = Vec::new();
+    vec.push((Rc::from(field), value));
     crate::model::template::TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -26,12 +27,12 @@ fn make_td2(
     f2: &str,
     v2: ValueData,
 ) -> crate::model::template::TemplateData {
-    let mut map = HashMap::new();
-    map.insert(f1.to_string(), v1);
-    map.insert(f2.to_string(), v2);
+    let mut vec = Vec::new();
+    vec.push((Rc::from(f1), v1));
+    vec.push((Rc::from(f2), v2));
     crate::model::template::TemplateData {
         name: name.to_string(),
-        value: ValueData::Group(map),
+        value: ValueData::Group(vec),
         pmap_bytes: None,
     }
 }
@@ -39,7 +40,7 @@ fn make_td2(
 fn field_is_empty(data: &crate::model::template::TemplateData, field: &str) -> bool {
     match &data.value {
         ValueData::Group(g) => {
-            matches!(g.get(field), Some(ValueData::Value(None)))
+            matches!(group_get(g, field), Some(ValueData::Value(None)))
         }
         _ => false,
     }
@@ -157,7 +158,7 @@ fn copy_mandatory_nullable_null_then_present() {
         _ => panic!("Expected group"),
     };
     assert!(
-        matches!(group.get("Txt"), Some(ValueData::Value(Some(Value::AsciiString(v)))) if v == "Hello"),
+        matches!(group_get(group, "Txt"), Some(ValueData::Value(Some(Value::AsciiString(v)))) if v == "Hello"),
         "Txt should be Hello"
     );
 }
