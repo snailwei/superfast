@@ -18,10 +18,12 @@ macro_rules! gen_write_impl {
     ($ty:ty) => {
         #[allow(dead_code)]
         impl $ty {
+            #[inline]
             fn write_u8(&mut self, b: u8) {
                 self.buf().push(b);
             }
 
+            #[inline]
             fn write_all(&mut self, slice: &[u8]) {
                 self.buf().extend_from_slice(slice);
             }
@@ -37,6 +39,7 @@ macro_rules! gen_write_impl {
             }
 
             /// Write presence map (MSB-first, bit 7 = stop on last byte).
+            #[inline]
             pub fn write_presence_map(&mut self, bitmap: u64, size: u8) {
                 if size == 0 {
                     return;
@@ -58,6 +61,7 @@ macro_rules! gen_write_impl {
             }
 
             /// Write non-nullable unsigned varint (MSB-first, bit 7 = stop on last byte).
+            #[inline]
             pub fn write_uint(&mut self, value: u64) {
                 if value == 0 {
                     self.write_u8(0x80);
@@ -65,18 +69,17 @@ macro_rules! gen_write_impl {
                 }
                 let bits = 64 - value.leading_zeros();
                 let chunks = (bits + 6) / 7; // ceil(bits / 7)
-                for i in 0..chunks {
+                // Write all bytes except the last without a branch
+                for i in 0..chunks - 1 {
                     let shift = (chunks - 1 - i) * 7;
-                    let byte = ((value >> shift) & 0x7F) as u8;
-                    if i == chunks - 1 {
-                        self.write_u8(byte | 0x80);
-                    } else {
-                        self.write_u8(byte);
-                    }
+                    self.write_u8(((value >> shift) & 0x7F) as u8);
                 }
+                // Last byte always has stop bit set
+                self.write_u8(((value & 0x7F) as u8) | 0x80);
             }
 
             /// Write nullable unsigned varint. `None` → `0`, `Some(v)` → `v + 1`.
+            #[inline]
             pub fn write_uint_nullable(&mut self, value: Option<u64>) {
                 match value {
                     None => self.write_uint(0),
@@ -88,6 +91,7 @@ macro_rules! gen_write_impl {
             /// Per FAST §2.1: "Entity value = two's complement. MSB of entity value is sign bit."
             /// Sign-bit extension: if the sign bit falls at a 7-bit boundary, emit extra
             /// 7-bit zeros/ones so the MSB is the sign bit.
+            #[inline]
             pub fn write_int(&mut self, value: i64) {
                 if value == 0 {
                     self.write_u8(0x80);
@@ -126,20 +130,16 @@ macro_rules! gen_write_impl {
                 // Two's complement in entity_bits: use u128 to handle sign extension
                 // beyond 64 bits (needed when boundary extension pushes entity_bits > 64).
                 let shifted = (value as i128 as u128) & ((1u128 << entity_bits) - 1);
-                // Encode as stop-bit varint, MSB-first.
-                for i in 0..num_bytes {
+                // Encode as stop-bit varint, MSB-first — no branch in the loop
+                for i in 0..num_bytes - 1 {
                     let shift = (num_bytes - 1 - i) * 7;
-                    let chunk = ((shifted >> shift) & 0x7F) as u8;
-                    let byte = if i == num_bytes - 1 {
-                        chunk | 0x80
-                    } else {
-                        chunk
-                    };
-                    self.write_u8(byte);
+                    self.write_u8(((shifted >> shift) & 0x7F) as u8);
                 }
+                self.write_u8(((shifted & 0x7F) as u8) | 0x80);
             }
 
             /// Write nullable signed varint.
+            #[inline]
             pub fn write_int_nullable(&mut self, value: Option<i64>) {
                 match value {
                     None => self.write_int(0),
@@ -149,22 +149,23 @@ macro_rules! gen_write_impl {
             }
 
             /// Write non-nullable ASCII string (bit 7 of each byte is stop flag).
+            #[inline]
             pub fn write_ascii_string(&mut self, s: &str) {
                 if s.is_empty() {
                     self.write_u8(0x80);
                     return;
                 }
                 let bytes = s.as_bytes();
-                for (i, &b) in bytes.iter().enumerate() {
-                    if i == bytes.len() - 1 {
-                        self.write_u8(b | 0x80);
-                    } else {
-                        self.write_u8(b);
-                    }
+                // Write all bytes except the last in one shot
+                if bytes.len() > 1 {
+                    self.write_all(&bytes[..bytes.len() - 1]);
                 }
+                // Last byte: set stop bit
+                self.write_u8(bytes[bytes.len() - 1] | 0x80);
             }
 
             /// Write nullable ASCII string.
+            #[inline]
             pub fn write_ascii_string_nullable(&mut self, value: Option<String>) {
                 match value {
                     None => self.write_u8(0x80),
@@ -174,18 +175,16 @@ macro_rules! gen_write_impl {
                     }
                     Some(s) => {
                         let bytes = s.as_bytes();
-                        for (i, &b) in bytes.iter().enumerate() {
-                            if i == bytes.len() - 1 {
-                                self.write_u8(b | 0x80);
-                            } else {
-                                self.write_u8(b);
-                            }
+                        if bytes.len() > 1 {
+                            self.write_all(&bytes[..bytes.len() - 1]);
                         }
+                        self.write_u8(bytes[bytes.len() - 1] | 0x80);
                     }
                 }
             }
 
             /// Write non-nullable Unicode string (varint length + raw bytes).
+            #[inline]
             pub fn write_unicode_string(&mut self, s: &str) {
                 self.write_uint(s.len() as u64);
                 self.buf().extend_from_slice(s.as_bytes());
@@ -193,6 +192,7 @@ macro_rules! gen_write_impl {
 
             /// Write nullable Unicode string. Per §2.5, unicode strings are byte vectors.
             /// Uses nullable unsigned-integer length: None → 0x80, Some(s) → len+1.
+            #[inline]
             pub fn write_unicode_string_nullable(&mut self, value: Option<String>) {
                 match value {
                     None => self.write_uint(0),
@@ -204,6 +204,7 @@ macro_rules! gen_write_impl {
             }
 
             /// Write non-nullable bytes (varint length + raw bytes).
+            #[inline]
             pub fn write_bytes(&mut self, b: &[u8]) {
                 self.write_uint(b.len() as u64);
                 self.buf().extend_from_slice(b);
@@ -211,6 +212,7 @@ macro_rules! gen_write_impl {
 
             /// Write nullable bytes. Per §2.4, length uses nullable unsigned-integer encoding.
             /// None → 0x80, Some(b) → len+1.
+            #[inline]
             pub fn write_bytes_nullable(&mut self, value: Option<&[u8]>) {
                 match value {
                     None => self.write_uint(0),
@@ -265,6 +267,7 @@ pub(crate) struct FastWriterOwned<'a> {
 }
 
 impl<'a> FastWriterOwned<'a> {
+    #[inline]
     fn buf(&mut self) -> &mut Vec<u8> {
         self.buf
     }

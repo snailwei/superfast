@@ -22,6 +22,8 @@ use crate::writer::{FastWriter, FastWriterOwned};
 pub struct FastEncoder {
     pub(crate) definitions: Definitions,
     pub(crate) context: Context,
+    /// Pre-allocated key for template ID context entry (avoids per-message allocation).
+    template_id_key: Rc<str>,
 }
 
 impl FastEncoder {
@@ -52,6 +54,7 @@ impl FastEncoder {
         Ok(Self {
             definitions: Definitions::new(text, default_dict)?,
             context: Context::new(),
+            template_id_key: Rc::from("__template_id__"),
         })
     }
 
@@ -90,7 +93,7 @@ impl FastEncoder {
 
         self.context.set(
             DictionaryType::Global,
-            Rc::from("__template_id__"),
+            self.template_id_key.clone(),
             Some(Value::UInt32(template.id)),
         );
 
@@ -120,7 +123,7 @@ impl<'a> SegmentState<'a> {
     fn new() -> Self {
         Self {
             pmap: PresenceMap::empty(),
-            body: Vec::new(),
+            body: Vec::with_capacity(32),
             _outer_wr: std::marker::PhantomData,
         }
     }
@@ -249,7 +252,12 @@ impl<'a> EncoderContext<'a> {
         data: &ValueData,
         seg: &mut SegmentState<'_>,
     ) -> Result<()> {
-        let has_dict = self.push_dict(instruction.dictionary.clone());
+        // Fast path: skip dictionary switch for Global (benchmark default)
+        let has_dict = if instruction.needs_dict_switch {
+            self.push_dict(instruction.dictionary.clone())
+        } else {
+            false
+        };
 
         let value = self.resolve_value(instruction, data)?;
 
@@ -712,12 +720,20 @@ impl<'a> EncoderContext<'a> {
 
     #[inline]
     pub(crate) fn ctx_set(&mut self, i: &Instruction, v: Option<Value>) {
-        self.context.set(self.make_dict_type(), i.key.clone(), v);
+        if i.needs_dict_switch {
+            self.context.set(self.make_dict_type(), i.key.clone(), v);
+        } else {
+            self.context.set_global(&i.key, v);
+        }
     }
 
     #[inline]
     pub(crate) fn ctx_get(&mut self, i: &Instruction) -> Result<Option<Option<Value>>> {
-        let v = self.context.get(self.make_dict_type(), &i.key);
+        let v = if i.needs_dict_switch {
+            self.context.get(self.make_dict_type(), &i.key)
+        } else {
+            self.context.get_global_ref(&i.key).map(|inner| inner.cloned())
+        };
         if let Some(Some(ref v)) = v
             && !i.value_type.matches(v)
         {

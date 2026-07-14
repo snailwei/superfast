@@ -35,6 +35,8 @@ pub(crate) struct Instruction {
     pub(crate) was_present: Cell<Option<bool>>,
     /// Pre-computed: whether dictionary switch is needed (not Global).
     pub(crate) needs_dict_switch: bool,
+    /// Pre-computed: whether this field is nullable.
+    pub(crate) nullable_cached: bool,
 }
 
 impl Instruction {
@@ -58,6 +60,7 @@ impl Instruction {
             has_pmap: Cell::new(false),
             was_present: Cell::new(None),
             needs_dict_switch: false,
+            nullable_cached: false,
         }
     }
 
@@ -69,6 +72,8 @@ impl Instruction {
         Self::apply_common_attrs(&mut instruction, node);
         Self::parse_children(&mut instruction, node)?;
         instruction.check_is_valid()?;
+        // Cache nullable status after operator is finalized
+        instruction.nullable_cached = instruction.is_nullable_compute();
         Ok(instruction)
     }
 
@@ -223,10 +228,12 @@ impl Instruction {
                         child.name = format!("{}:length", instr.name);
                     }
                     child.presence = instr.presence;
+                    child.nullable_cached = child.is_nullable_compute();
                 } else {
                     let mut length =
                         Self::new(0, &format!("{}:length", instr.name), ValueType::Length);
                     length.presence = instr.presence;
+                    length.nullable_cached = length.is_nullable_compute();
                     instr.instructions.push(length);
                 }
             }
@@ -258,7 +265,9 @@ impl Instruction {
         let (op, mut ex, mut mn) =
             Self::assemble_decimal(operator, exponent, mantissa, initial_value)?;
         ex.presence = instr.presence;
+        ex.nullable_cached = ex.is_nullable_compute();
         mn.presence = Presence::Mandatory;
+        mn.nullable_cached = mn.is_nullable_compute();
         if ex.key.is_empty() {
             ex.key = Rc::from(format!("{}:exponent", &instr.key));
         }
@@ -367,11 +376,18 @@ impl Instruction {
         self.presence == Presence::Optional
     }
 
-    pub(crate) fn is_nullable(&self) -> bool {
+    /// Compute nullable status (used during initialization).
+    fn is_nullable_compute(&self) -> bool {
         match self.operator {
             Operator::Constant => false,
             _ => self.nullable || self.is_optional(),
         }
+    }
+
+    /// Check if this field is nullable (uses pre-computed value).
+    #[inline]
+    pub(crate) fn is_nullable(&self) -> bool {
+        self.nullable_cached
     }
 
     fn set_initial_value(&mut self, value: &str) -> Result<()> {

@@ -66,6 +66,7 @@ impl Definitions {
             has_pmap: Cell::new(false),
             was_present: Cell::new(None),
             needs_dict_switch: false,
+            nullable_cached: false,
         });
 
         let definitions = Self {
