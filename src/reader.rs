@@ -178,6 +178,7 @@ impl<'a> FastReader<'a> {
     }
 
     /// Read nullable signed varint. Entity value 0 (`0x80`) → `None`.
+    #[allow(dead_code)]
     pub fn read_int_nullable(&mut self) -> Result<Option<i64>, &'static str> {
         let value = self.read_int()?;
         match value {
@@ -188,6 +189,7 @@ impl<'a> FastReader<'a> {
     }
 
     /// Read non-nullable ASCII string (bit 7 of each byte is stop flag).
+    #[inline(always)]
     pub fn read_ascii_string(&mut self) -> Result<String, &'static str> {
         self.check_eof()?;
         let mut byte = self.buf[self.pos];
@@ -195,7 +197,7 @@ impl<'a> FastReader<'a> {
         if byte == 0x80 {
             return Ok(String::new());
         }
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(16);
         loop {
             buf.push(byte & 0x7F);
             if byte & 0x80 == 0x80 {
@@ -210,6 +212,7 @@ impl<'a> FastReader<'a> {
     }
 
     /// Read nullable ASCII string. `0x80` → None, `0x00 0x80` → Some("").
+    #[inline(always)]
     pub fn read_ascii_string_nullable(&mut self) -> Result<Option<String>, &'static str> {
         self.check_eof()?;
         let mut byte = self.buf[self.pos];
@@ -224,7 +227,7 @@ impl<'a> FastReader<'a> {
                 return Ok(Some(String::new()));
             }
         }
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(16);
         loop {
             buf.push(byte & 0x7F);
             if byte & 0x80 == 0x80 {

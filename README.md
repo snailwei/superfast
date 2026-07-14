@@ -472,9 +472,9 @@ SuperFAST is designed for high-throughput, low-latency workloads. Benchmarks enc
 
 | Profile | Encode | Decode | Round-trip | µs/msg |
 |---|---|---|---|---|
-| **Steady stream** (copy/inc/tail) | 532k msgs/s (9.2 MB/s) | 922k msgs/s (14.1 MB/s) | 369k msgs/s (5.6 MB/s) | 2 |
-| **Churning stream** (all fields change) | 500k msgs/s (10.0 MB/s) | 932k msgs/s (20.1 MB/s) | 364k msgs/s (7.9 MB/s) | 2 |
-| **Trade captures** (mixed operators) | 578k msgs/s (18.7 MB/s) | 1.36M msgs/s (45.4 MB/s) | 441k msgs/s (14.8 MB/s) | 2 |
+| **Steady stream** (copy/inc/tail) | 717k msgs/s (10.9 MB/s) | 1.05M msgs/s (16.1 MB/s) | 472k msgs/s (7.2 MB/s) | 2 |
+| **Churning stream** (all fields change) | 732k msgs/s (15.8 MB/s) | 1.04M msgs/s (22.5 MB/s) | 488k msgs/s (10.5 MB/s) | 2 |
+| **Trade captures** (mixed operators) | 881k msgs/s (29.5 MB/s) | 1.50M msgs/s (50.3 MB/s) | 661k msgs/s (22.1 MB/s) | 2 |
 
 ### Compression
 

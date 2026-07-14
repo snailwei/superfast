@@ -46,10 +46,11 @@ pub fn to_template_data<T: Serialize>(value: &T) -> Result<TemplateData> {
 
     // For newtype variant enums (Message::Variant(SingleValue)), serialize_newtype_variant
     // wraps the inner value in a DynamicTemplateRef carrying the variant name.
-    if let ValueData::DynamicTemplateRef(td) = &serializer.value {
+    if let ValueData::DynamicTemplateRef(td) = serializer.value {
+        serializer.value = ValueData::None;
         return Ok(TemplateData {
-            name: td.name.clone(),
-            value: td.value.clone(),
+            name: td.name,
+            value: td.value,
             pmap_bytes: None,
         });
     }
@@ -191,28 +192,28 @@ impl<'de> ser::Serializer for &'de mut ValueDataSerializer {
         Ok(())
     }
 
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-        self.value = ValueData::Sequence(Vec::new());
+    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+        self.value = ValueData::Sequence(Vec::with_capacity(len.unwrap_or(0)));
         Ok(self)
     }
-    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
-        self.value = ValueData::Sequence(Vec::new());
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+        self.value = ValueData::Sequence(Vec::with_capacity(len));
         Ok(self)
     }
     fn serialize_tuple_struct(
         self,
         _name: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
-        self.value = ValueData::Sequence(Vec::new());
+        self.value = ValueData::Sequence(Vec::with_capacity(len));
         Ok(self)
     }
-    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        self.value = ValueData::Group(Vec::new());
+    fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
+        self.value = ValueData::Group(Vec::with_capacity(len.unwrap_or(0)));
         Ok(self)
     }
-    fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        self.value = ValueData::Group(Vec::new());
+    fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
+        self.value = ValueData::Group(Vec::with_capacity(len));
         self.pending_name = Some(name.to_string());
         Ok(self)
     }
@@ -221,10 +222,10 @@ impl<'de> ser::Serializer for &'de mut ValueDataSerializer {
         _name: &'static str,
         _idx: u32,
         variant: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
         self.pending_key = Some(variant.to_string());
-        self.value = ValueData::Sequence(Vec::new());
+        self.value = ValueData::Sequence(Vec::with_capacity(len));
         Ok(self)
     }
     fn serialize_struct_variant(
@@ -232,9 +233,9 @@ impl<'de> ser::Serializer for &'de mut ValueDataSerializer {
         _name: &'static str,
         _idx: u32,
         _variant: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<Self::SerializeStructVariant> {
-        self.value = ValueData::Group(Vec::new());
+        self.value = ValueData::Group(Vec::with_capacity(len));
         Ok(self)
     }
 }

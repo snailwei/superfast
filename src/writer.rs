@@ -274,3 +274,174 @@ impl<'a> FastWriterOwned<'a> {
 }
 
 gen_write_impl!(FastWriterOwned<'_>);
+
+// ------------------------------------------------------------------
+// Direct buffer functions — bypass FastWriterOwned wrapper entirely.
+// Used by encoder hot path for zero-indirection writes.
+// ------------------------------------------------------------------
+
+/// Write presence map directly to buffer.
+#[allow(dead_code)]
+#[inline(always)]
+pub(crate) fn write_presence_map_buf(buf: &mut Vec<u8>, bitmap: u64, size: u8) {
+    if size == 0 {
+        return;
+    }
+    let mut remaining = size;
+    let mut total = remaining as u32;
+    while remaining > 0 {
+        let take = remaining.min(7);
+        let shift = total - take as u32;
+        let byte = ((bitmap >> shift) & 0x7F) as u8;
+        if remaining <= 7 {
+            buf.push(byte | 0x80);
+        } else {
+            buf.push(byte);
+        }
+        remaining = remaining.saturating_sub(take);
+        total -= take as u32;
+    }
+}
+
+/// Write non-nullable unsigned varint directly to buffer.
+#[inline(always)]
+pub(crate) fn write_uint_buf(buf: &mut Vec<u8>, value: u64) {
+    if value == 0 {
+        buf.push(0x80);
+        return;
+    }
+    let bits = 64 - value.leading_zeros();
+    let chunks = (bits + 6) / 7;
+    for i in 0..chunks - 1 {
+        let shift = (chunks - 1 - i) * 7;
+        buf.push(((value >> shift) & 0x7F) as u8);
+    }
+    buf.push(((value & 0x7F) as u8) | 0x80);
+}
+
+/// Write nullable unsigned varint directly to buffer.
+#[inline(always)]
+pub(crate) fn write_uint_nullable_buf(buf: &mut Vec<u8>, value: Option<u64>) {
+    match value {
+        None => write_uint_buf(buf, 0),
+        Some(v) => write_uint_buf(buf, v + 1),
+    }
+}
+
+/// Write non-nullable signed varint directly to buffer.
+#[inline(always)]
+pub(crate) fn write_int_buf(buf: &mut Vec<u8>, value: i64) {
+    if value == 0 {
+        buf.push(0x80);
+        return;
+    }
+    let value_bits = if value > 0 {
+        let sig_bits = 64u32 - value.leading_zeros();
+        if sig_bits % 7 == 0 && sig_bits > 0 {
+            sig_bits + 1
+        } else {
+            sig_bits
+        }
+    } else {
+        let sig_bits = if value == -1 {
+            1
+        } else {
+            let s = 64u32 - (!(value as u64)).leading_zeros();
+            s.max(1)
+        };
+        if sig_bits % 7 == 0 {
+            sig_bits + 1
+        } else {
+            sig_bits
+        }
+    };
+    let entity_bits = ((value_bits + 6) / 7) * 7;
+    let num_bytes = entity_bits as usize / 7;
+    let shifted = (value as i128 as u128) & ((1u128 << entity_bits) - 1);
+    for i in 0..num_bytes - 1 {
+        let shift = (num_bytes - 1 - i) * 7;
+        buf.push(((shifted >> shift) & 0x7F) as u8);
+    }
+    buf.push(((shifted & 0x7F) as u8) | 0x80);
+}
+
+/// Write nullable signed varint directly to buffer.
+#[inline(always)]
+pub(crate) fn write_int_nullable_buf(buf: &mut Vec<u8>, value: Option<i64>) {
+    match value {
+        None => write_int_buf(buf, 0),
+        Some(v) if v >= 0 => write_int_buf(buf, v + 1),
+        Some(v) => write_int_buf(buf, v - 1),
+    }
+}
+
+/// Write non-nullable ASCII string directly to buffer.
+#[inline(always)]
+pub(crate) fn write_ascii_string_buf(buf: &mut Vec<u8>, s: &str) {
+    if s.is_empty() {
+        buf.push(0x80);
+        return;
+    }
+    let bytes = s.as_bytes();
+    if bytes.len() > 1 {
+        buf.extend_from_slice(&bytes[..bytes.len() - 1]);
+    }
+    buf.push(bytes[bytes.len() - 1] | 0x80);
+}
+
+/// Write nullable ASCII string directly to buffer.
+#[inline(always)]
+pub(crate) fn write_ascii_string_nullable_buf(buf: &mut Vec<u8>, value: Option<&str>) {
+    match value {
+        None => buf.push(0x80),
+        Some(s) if s.is_empty() => {
+            buf.push(0x00);
+            buf.push(0x80);
+        }
+        Some(s) => {
+            let bytes = s.as_bytes();
+            if bytes.len() > 1 {
+                buf.extend_from_slice(&bytes[..bytes.len() - 1]);
+            }
+            buf.push(bytes[bytes.len() - 1] | 0x80);
+        }
+    }
+}
+
+/// Write non-nullable Unicode string directly to buffer.
+#[inline(always)]
+pub(crate) fn write_unicode_string_buf(buf: &mut Vec<u8>, s: &str) {
+    write_uint_buf(buf, s.len() as u64);
+    buf.extend_from_slice(s.as_bytes());
+}
+
+/// Write nullable Unicode string directly to buffer.
+#[inline(always)]
+pub(crate) fn write_unicode_string_nullable_buf(buf: &mut Vec<u8>, value: Option<&str>) {
+    match value {
+        None => write_uint_buf(buf, 0),
+        Some(s) => {
+            write_uint_buf(buf, s.len() as u64 + 1);
+            buf.extend_from_slice(s.as_bytes());
+        }
+    }
+}
+
+/// Write non-nullable bytes directly to buffer.
+#[inline(always)]
+pub(crate) fn write_bytes_buf(buf: &mut Vec<u8>, b: &[u8]) {
+    write_uint_buf(buf, b.len() as u64);
+    buf.extend_from_slice(b);
+}
+
+/// Write nullable bytes directly to buffer.
+#[inline(always)]
+pub(crate) fn write_bytes_nullable_buf(buf: &mut Vec<u8>, value: Option<&[u8]>) {
+    match value {
+        None => write_uint_buf(buf, 0),
+        Some(b) => {
+            write_uint_buf(buf, b.len() as u64 + 1);
+            buf.extend_from_slice(b);
+        }
+    }
+}

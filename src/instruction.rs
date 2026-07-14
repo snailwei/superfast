@@ -781,73 +781,66 @@ impl Instruction {
     }
 
     fn read_uint32(&self, s: &mut DecoderContext<'_>) -> Result<Option<u32>> {
-        if self.is_nullable() {
-            match s.rdr.read_uint_nullable() {
-                Ok(None) => Ok(None),
-                Ok(Some(v)) => {
-                    if v > u64::from(u32::MAX) {
-                        return Err(Error::Runtime(format!("uInt32 value is out of range: {v}")));
-                    }
-                    Ok(Some(v as u32))
-                }
-                Err(_e) => Err(Error::UnexpectedEof), // map &'static str to Error
+        let raw = s.rdr.read_uint().map_err(|_| Error::UnexpectedEof)?;
+        let v = if self.nullable_cached {
+            match raw {
+                0 => return Ok(None),
+                v => v - 1,
             }
         } else {
-            let v = s.rdr.read_uint().map_err(|_| Error::UnexpectedEof)?;
-            if v > u64::from(u32::MAX) {
-                return Err(Error::Runtime(format!("uInt32 value is out of range: {v}")));
-            }
-            Ok(Some(v as u32))
+            raw
+        };
+        if v > u64::from(u32::MAX) {
+            return Err(Error::Runtime(format!("uInt32 value is out of range: {v}")));
         }
+        Ok(Some(v as u32))
     }
 
     fn read_uint64(&self, s: &mut DecoderContext<'_>) -> Result<Option<u64>> {
-        if self.is_nullable() {
-            Ok(s.rdr
-                .read_uint_nullable()
-                .map_err(|_| Error::UnexpectedEof)?)
+        let raw = s.rdr.read_uint().map_err(|_| Error::UnexpectedEof)?;
+        Ok(if self.nullable_cached {
+            match raw {
+                0 => None,
+                v => Some(v - 1),
+            }
         } else {
-            Ok(Some(s.rdr.read_uint().map_err(|_| Error::UnexpectedEof)?))
-        }
+            Some(raw)
+        })
     }
 
     fn read_int32(&self, s: &mut DecoderContext<'_>) -> Result<Option<i32>> {
         const INT32_RANGE: RangeInclusive<i64> = (i32::MIN as i64)..=(i32::MAX as i64);
-        if self.is_nullable() {
-            match s
-                .rdr
-                .read_int_nullable()
-                .map_err(|_| Error::UnexpectedEof)?
-            {
-                None => Ok(None),
-                Some(v) => {
-                    if !INT32_RANGE.contains(&v) {
-                        return Err(Error::Runtime(format!("Int32 value is out of range: {v}")));
-                    }
-                    Ok(Some(v as i32))
-                }
+        let raw = s.rdr.read_int().map_err(|_| Error::UnexpectedEof)?;
+        let v = if self.nullable_cached {
+            match raw {
+                0 => return Ok(None),
+                v if v < 0 => v + 1,
+                v => v - 1,
             }
         } else {
-            let v = s.rdr.read_int().map_err(|_| Error::UnexpectedEof)?;
-            if !INT32_RANGE.contains(&v) {
-                return Err(Error::Runtime(format!("Int32 value is out of range: {v}")));
-            }
-            Ok(Some(v as i32))
+            raw
+        };
+        if !INT32_RANGE.contains(&v) {
+            return Err(Error::Runtime(format!("Int32 value is out of range: {v}")));
         }
+        Ok(Some(v as i32))
     }
 
     fn read_int64(&self, s: &mut DecoderContext<'_>) -> Result<Option<i64>> {
-        if self.is_nullable() {
-            Ok(s.rdr
-                .read_int_nullable()
-                .map_err(|_| Error::UnexpectedEof)?)
+        let raw = s.rdr.read_int().map_err(|_| Error::UnexpectedEof)?;
+        Ok(if self.nullable_cached {
+            match raw {
+                0 => None,
+                v if v < 0 => Some(v + 1),
+                v => Some(v - 1),
+            }
         } else {
-            Ok(Some(s.rdr.read_int().map_err(|_| Error::UnexpectedEof)?))
-        }
+            Some(raw)
+        })
     }
 
     fn read_ascii_string(&self, s: &mut DecoderContext<'_>) -> Result<Option<String>> {
-        if self.is_nullable() {
+        if self.nullable_cached {
             Ok(s.rdr
                 .read_ascii_string_nullable()
                 .map_err(|_| Error::UnexpectedEof)?)
@@ -861,7 +854,7 @@ impl Instruction {
     }
 
     fn read_unicode_string(&self, s: &mut DecoderContext<'_>) -> Result<Option<String>> {
-        if self.is_nullable() {
+        if self.nullable_cached {
             Ok(s.rdr
                 .read_unicode_string_nullable()
                 .map_err(|_| Error::UnexpectedEof)?)
@@ -875,7 +868,7 @@ impl Instruction {
     }
 
     fn read_bytes(&self, s: &mut DecoderContext<'_>) -> Result<Option<Vec<u8>>> {
-        if self.is_nullable() {
+        if self.nullable_cached {
             Ok(s.rdr
                 .read_bytes_nullable()
                 .map_err(|_| Error::UnexpectedEof)?)

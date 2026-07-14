@@ -125,7 +125,7 @@ impl ModelFactory {
     }
 
     pub(crate) fn start_sequence_item(&mut self, _index: u32, pmap_bytes: Option<Vec<u8>>) {
-        let mut group = FieldVec::new();
+        let mut group = FieldVec::with_capacity(4);
         // Store original segment pmap for round-trip fidelity
         if let Some(bytes) = pmap_bytes {
             group.push((Rc::from("__pmap__"), ValueData::Value(Some(Value::Bytes(bytes)))));
@@ -174,7 +174,7 @@ impl ModelFactory {
 
     pub(crate) fn start_group(&mut self, name: &str) {
         self.context
-            .push((name.to_string(), ValueData::Group(Vec::new())));
+            .push((name.to_string(), ValueData::Group(Vec::with_capacity(4))));
         self.ref_num.push(0);
     }
 

@@ -16,7 +16,12 @@ use crate::pmap::PresenceMap;
 use crate::template::Template;
 use crate::types::{Dictionary, Operator, TypeRef};
 use crate::value::{Value, ValueType};
-use crate::writer::{FastWriter, FastWriterOwned};
+use crate::writer::{
+    FastWriter, FastWriterOwned, write_ascii_string_buf, write_ascii_string_nullable_buf,
+    write_bytes_buf, write_bytes_nullable_buf, write_int_buf, write_int_nullable_buf,
+    write_uint_buf, write_uint_nullable_buf, write_unicode_string_buf,
+    write_unicode_string_nullable_buf,
+};
 
 /// Encoder for FAST protocol messages.
 pub struct FastEncoder {
@@ -24,6 +29,8 @@ pub struct FastEncoder {
     pub(crate) context: Context,
     /// Pre-allocated key for template ID context entry (avoids per-message allocation).
     template_id_key: Rc<str>,
+    /// Reusable output buffer — avoids per-message heap allocation.
+    buf: Vec<u8>,
 }
 
 impl FastEncoder {
@@ -55,6 +62,7 @@ impl FastEncoder {
             definitions: Definitions::new(text, default_dict)?,
             context: Context::new(),
             template_id_key: Rc::from("__template_id__"),
+            buf: Vec::with_capacity(256),
         })
     }
 
@@ -97,7 +105,9 @@ impl FastEncoder {
             Some(Value::UInt32(template.id)),
         );
 
-        let mut wr = FastWriter::new();
+        // Reuse pre-allocated buffer — avoids per-message heap allocation.
+        self.buf.clear();
+        let mut wr = FastWriter { buf: std::mem::take(&mut self.buf) };
         let mut ctx = EncoderContext::new(
             &mut self.definitions,
             &mut self.context,
@@ -105,7 +115,10 @@ impl FastEncoder {
             template.id,
         );
         ctx.encode_template(&template, &data.value, data.pmap_bytes)?;
-        Ok(wr.into_inner())
+        self.buf = wr.into_inner();
+        // Return data while preserving buffer capacity for next call.
+        let cap = self.buf.capacity();
+        Ok(std::mem::replace(&mut self.buf, Vec::with_capacity(cap)))
     }
 }
 
@@ -283,30 +296,32 @@ impl<'a> EncoderContext<'a> {
         instruction: &Instruction,
         data: &ValueData,
     ) -> Result<Option<Value>> {
-        let mut value: Option<Value> = match (data, instruction.name.as_str()) {
-            (ValueData::Group(group), name) => match group_get(group, name) {
-                Some(ValueData::Value(v)) => v.clone(),
-                Some(ValueData::None) => instruction.initial_value.clone(),
+        // Cache group_get result to avoid redundant linear scan on fallback path.
+        let group_entry = match (data, instruction.name.as_str()) {
+            (ValueData::Group(group), name) => Some(group_get(group, name)),
+            _ => None,
+        };
+
+        let mut value: Option<Value> = match group_entry {
+            Some(Some(ValueData::Value(v))) => v.clone(),
+            Some(Some(ValueData::None)) => instruction.initial_value.clone(),
+            Some(Some(_)) => None,
+            Some(None) => None,
+            None => match data {
+                ValueData::Value(v) => v.clone(),
                 _ => None,
             },
-            (ValueData::Value(v), _) => v.clone(),
-            _ => None,
         };
 
         // Operator-specific fallbacks for missing values.
         // Only apply when the field is truly absent, not when it is explicitly
         // NULL on a nullable field (ValueData::Value(None)).
         if value.is_none() {
-            // Check if the field was explicitly set to NULL
-            let is_explicit_null = match data {
-                ValueData::Group(group) => {
-                    matches!(
-                        group_get(group, instruction.name.as_str()),
-                        Some(ValueData::Value(None))
-                    )
-                }
-                ValueData::Value(None) => true,
-                _ => false,
+            // Check if the field was explicitly set to NULL — use cached entry.
+            let is_explicit_null = match group_entry {
+                Some(Some(ValueData::Value(None))) => true,
+                Some(_) => false,
+                None => matches!(data, ValueData::Value(None)),
             };
             if !is_explicit_null {
                 value = self.operator_fallback(instruction);
@@ -329,11 +344,17 @@ impl<'a> EncoderContext<'a> {
     fn operator_fallback(&mut self, instruction: &Instruction) -> Option<Value> {
         match instruction.operator {
             Operator::Constant | Operator::Default => instruction.initial_value.clone(),
-            Operator::Copy | Operator::Increment | Operator::Tail => self
-                .context
-                .get(self.make_dict_type(), &instruction.key)
-                .flatten()
-                .or_else(|| instruction.initial_value.clone()),
+            Operator::Copy | Operator::Increment | Operator::Tail => {
+                // Use Global fast path when no dictionary switch is needed.
+                let ctx_value = if instruction.needs_dict_switch {
+                    self.context
+                        .get(self.make_dict_type(), &instruction.key)
+                        .flatten()
+                } else {
+                    self.context.get_global_ref(&instruction.key).map(|v| v.cloned()).flatten()
+                };
+                ctx_value.or_else(|| instruction.initial_value.clone())
+            }
             Operator::Delta | Operator::None => None,
         }
     }
@@ -906,17 +927,25 @@ impl Instruction {
     }
 
     // ------------------------------------------------------------------
-    // Buffer-aware value writing
+    // Buffer-aware value writing — direct Vec<u8>, no wrapper
     // ------------------------------------------------------------------
 
     fn write_value_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
-        // Use a temporary FastWriter that writes to buf
-        let mut w = FastWriter::from_buf(buf);
-        self.write_value(&mut w, value)
+        match self.value_type {
+            ValueType::UInt32 | ValueType::Length => self.write_uint32_buf(buf, value),
+            ValueType::Int32 => self.write_int32_buf(buf, value),
+            ValueType::UInt64 => self.write_uint64_buf(buf, value),
+            ValueType::Int64 | ValueType::Mantissa => self.write_int64_buf(buf, value),
+            ValueType::Exponent => self.write_exponent_buf(buf, value),
+            ValueType::Decimal => self.write_decimal_buf(buf, value),
+            ValueType::AsciiString => self.write_ascii_buf(buf, value),
+            ValueType::UnicodeString => self.write_unicode_buf(buf, value),
+            ValueType::Bytes => self.write_bytes_buf_val(buf, value, "Bytes"),
+            _ => unreachable!(),
+        }
     }
 
     fn write_delta_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
-        let mut w = FastWriter::from_buf(buf);
         match self.value_type {
             ValueType::UInt32
             | ValueType::Int32
@@ -925,8 +954,20 @@ impl Instruction {
             | ValueType::Length
             | ValueType::Exponent
             | ValueType::Mantissa => match value {
-                None => self.write_int_wr(&mut w, None::<i64>),
-                Some(Value::Int64(v)) => self.write_int_wr(&mut w, Some(*v)),
+                None => {
+                    if self.nullable_cached {
+                        write_int_nullable_buf(buf, None::<i64>);
+                    }
+                    Ok(())
+                }
+                Some(Value::Int64(v)) => {
+                    if self.nullable_cached {
+                        write_int_nullable_buf(buf, Some(*v));
+                    } else {
+                        write_int_buf(buf, *v);
+                    }
+                    Ok(())
+                }
                 Some(v) => Err(Error::Runtime(format!(
                     "{} field's delta must be Int64, got: {:?}",
                     self.name, v
@@ -962,12 +1003,9 @@ impl Instruction {
             }
             _ => (0, 0),
         };
-        let mut w = FastWriter::from_buf(buf);
-        // FAST §4.7: unsigned integer encoding with value incremented by one
-        w.write_uint(sub_len as u64 + 1);
-        // Write new data (suffix after common prefix)
-        let suffix = new.chars().skip(common).collect::<String>();
-        w.write_ascii_string(&suffix);
+        write_uint_buf(buf, sub_len as u64 + 1);
+        let suffix: String = new.chars().skip(common).collect();
+        write_ascii_string_buf(buf, &suffix);
         Ok(())
     }
 
@@ -1004,36 +1042,295 @@ impl Instruction {
             }
             _ => (0, 0),
         };
-        let mut w = FastWriter::from_buf(buf);
-        // FAST §4.7: unsigned integer encoding with value incremented by one
-        w.write_uint(sub_len as u64 + 1);
-        // Write new data (suffix after common prefix)
+        write_uint_buf(buf, sub_len as u64 + 1);
         let suffix = &new_bytes[common..];
-        w.write_uint(suffix.len() as u64);
-        w.write_raw_bytes(suffix);
+        write_uint_buf(buf, suffix.len() as u64);
+        buf.extend_from_slice(suffix);
         Ok(())
     }
 
     fn write_tail_buf(&self, buf: &mut Vec<u8>, tail: &Option<Value>) -> Result<()> {
-        let mut w = FastWriter::from_buf(buf);
         match self.value_type {
             ValueType::AsciiString => match tail {
-                None => self.write_ascii_string_wr(&mut w, None),
-                Some(Value::AsciiString(s)) => self.write_ascii_string_wr(&mut w, Some(s)),
+                None => {
+                    if self.nullable_cached {
+                        write_ascii_string_nullable_buf(buf, None);
+                    }
+                    Ok(())
+                }
+                Some(Value::AsciiString(s)) => {
+                    if self.nullable_cached {
+                        write_ascii_string_nullable_buf(buf, Some(s));
+                    } else {
+                        write_ascii_string_buf(buf, s);
+                    }
+                    Ok(())
+                }
                 Some(v) => Err(Error::Runtime(format!(
                     "{} field's tail must be AsciiString, got: {:?}",
                     self.name, v
                 ))),
             },
             ValueType::UnicodeString | ValueType::Bytes => match tail {
-                None => self.write_bytes_wr(&mut w, None),
-                Some(Value::Bytes(b)) => self.write_bytes_wr(&mut w, Some(b)),
+                None => {
+                    if self.nullable_cached {
+                        write_bytes_nullable_buf(buf, None);
+                    }
+                    Ok(())
+                }
+                Some(Value::Bytes(b)) => {
+                    if self.nullable_cached {
+                        write_bytes_nullable_buf(buf, Some(b));
+                    } else {
+                        write_bytes_buf(buf, b);
+                    }
+                    Ok(())
+                }
                 Some(v) => Err(Error::Runtime(format!(
                     "{} field's tail must be Bytes, got: {:?}",
                     self.name, v
                 ))),
             },
             _ => unreachable!(),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Direct buffer write helpers — no FastWriterOwned wrapper
+    // ------------------------------------------------------------------
+
+    fn write_uint32_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_uint_nullable_buf(buf, None::<u64>);
+                }
+                Ok(())
+            }
+            Some(Value::UInt32(v)) => {
+                if self.nullable_cached {
+                    write_uint_nullable_buf(buf, Some(*v as u64));
+                } else {
+                    write_uint_buf(buf, *v as u64);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have UInt32 value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_int32_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, None::<i64>);
+                }
+                Ok(())
+            }
+            Some(Value::Int32(v)) => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, Some(*v as i64));
+                } else {
+                    write_int_buf(buf, *v as i64);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have Int32 value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_uint64_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_uint_nullable_buf(buf, None::<u64>);
+                }
+                Ok(())
+            }
+            Some(Value::UInt64(v)) => {
+                if self.nullable_cached {
+                    write_uint_nullable_buf(buf, Some(*v));
+                } else {
+                    write_uint_buf(buf, *v);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have UInt64 value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_int64_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, None::<i64>);
+                }
+                Ok(())
+            }
+            Some(Value::Int64(v)) => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, Some(*v));
+                } else {
+                    write_int_buf(buf, *v);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have Int64 value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_exponent_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, None::<i64>);
+                }
+                Ok(())
+            }
+            Some(Value::Int32(v)) => {
+                if self.nullable_cached {
+                    write_int_nullable_buf(buf, Some(*v as i64));
+                } else {
+                    write_int_buf(buf, *v as i64);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {}:exponent must have Int32 value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_ascii_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_ascii_string_nullable_buf(buf, None);
+                }
+                Ok(())
+            }
+            Some(Value::AsciiString(v)) => {
+                if self.nullable_cached {
+                    write_ascii_string_nullable_buf(buf, Some(v));
+                } else {
+                    write_ascii_string_buf(buf, v);
+                }
+                Ok(())
+            }
+            Some(Value::UnicodeString(v)) => {
+                if v.is_ascii() {
+                    if self.nullable_cached {
+                        write_ascii_string_nullable_buf(buf, Some(v));
+                    } else {
+                        write_ascii_string_buf(buf, v);
+                    }
+                    Ok(())
+                } else {
+                    Err(Error::Runtime(format!(
+                        "Field {} must be valid ASCII string",
+                        self.name
+                    )))
+                }
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have ASCIIString value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_unicode_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_unicode_string_nullable_buf(buf, None);
+                }
+                Ok(())
+            }
+            Some(Value::UnicodeString(v) | Value::AsciiString(v)) => {
+                if self.nullable_cached {
+                    write_unicode_string_nullable_buf(buf, Some(v));
+                } else {
+                    write_unicode_string_buf(buf, v);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have UnicodeString value, got: {:?}",
+                self.name, value
+            ))),
+        }
+    }
+
+    fn write_bytes_buf_val(
+        &self,
+        buf: &mut Vec<u8>,
+        value: &Option<Value>,
+        expected: &str,
+    ) -> Result<()> {
+        match value {
+            None => {
+                if self.nullable_cached {
+                    write_bytes_nullable_buf(buf, None);
+                }
+                Ok(())
+            }
+            Some(Value::Bytes(v)) => {
+                if self.nullable_cached {
+                    write_bytes_nullable_buf(buf, Some(v));
+                } else {
+                    write_bytes_buf(buf, v);
+                }
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have {} value, got: {:?}",
+                self.name, expected, value
+            ))),
+        }
+    }
+
+    fn write_decimal_buf(&self, buf: &mut Vec<u8>, value: &Option<Value>) -> Result<()> {
+        match value {
+            None => {
+                let exponent_instr = self
+                    .instructions
+                    .first()
+                    .ok_or_else(|| Error::Runtime("exponent field not found".to_string()))?;
+                exponent_instr.write_exponent_buf(buf, &None)?;
+                Ok(())
+            }
+            Some(Value::Decimal(d)) => {
+                let exponent_instr = self
+                    .instructions
+                    .first()
+                    .ok_or_else(|| Error::Runtime("exponent field not found".to_string()))?;
+                exponent_instr.write_exponent_buf(buf, &Some(Value::Int32(d.exponent)))?;
+
+                let mantissa_instr = self
+                    .instructions
+                    .get(1)
+                    .ok_or_else(|| Error::Runtime("mantissa field not found".to_string()))?;
+                mantissa_instr.write_int64_buf(buf, &Some(Value::Int64(d.mantissa)))?;
+                Ok(())
+            }
+            _ => Err(Error::Runtime(format!(
+                "Field {} must have Decimal value, got: {:?}",
+                self.name, value
+            ))),
         }
     }
 }
@@ -1044,6 +1341,7 @@ impl Instruction {
 // Instruction value writing — dispatches to FastWriterOwned
 // ---------------------------------------------------------------------
 
+#[allow(dead_code)]
 impl Instruction {
     fn write_value(&self, w: &mut FastWriterOwned<'_>, value: &Option<Value>) -> Result<()> {
         match self.value_type {
