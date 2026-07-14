@@ -1,8 +1,8 @@
 //! FAST Field Instruction — parses XML and extracts field values.
 
-use std::cell::Cell;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 
 use roxmltree::Node;
 
@@ -28,11 +28,12 @@ pub(crate) struct Instruction {
     pub(crate) instructions: Vec<Instruction>,
     pub(crate) dictionary: Dictionary,
     pub(crate) type_ref: TypeRef,
-    pub(crate) key: Rc<str>,
-    pub(crate) has_pmap: Cell<bool>,
+    pub(crate) key: Arc<str>,
+    pub(crate) has_pmap: AtomicBool,
     /// Whether this field was present in the stream during the last decode.
     /// Only meaningful for fields that check the pmap (Default, Copy, Increment, Tail).
-    pub(crate) was_present: Cell<Option<bool>>,
+    /// Encoded as AtomicI8: -1 = None, 0 = Some(false), 1 = Some(true).
+    pub(crate) was_present: AtomicI8,
 }
 
 impl Instruction {
@@ -52,9 +53,9 @@ impl Instruction {
             instructions: Vec::new(),
             dictionary: Dictionary::Global,
             type_ref: TypeRef::Any,
-            key: Rc::from(ky),
-            has_pmap: Cell::new(false),
-            was_present: Cell::new(None),
+            key: Arc::from(ky),
+            has_pmap: AtomicBool::new(false),
+            was_present: AtomicI8::new(-1),
         }
     }
 
@@ -127,7 +128,7 @@ impl Instruction {
             instr.dictionary = Dictionary::from_str(d);
         }
         if let Some(k) = node.attribute("key") {
-            instr.key = Rc::from(k);
+            instr.key = Arc::from(k);
         }
         if let Some(k) = node.attribute("typeRef") {
             instr.type_ref = TypeRef::from_str(k);
@@ -257,10 +258,10 @@ impl Instruction {
         ex.presence = instr.presence;
         mn.presence = Presence::Mandatory;
         if ex.key.is_empty() {
-            ex.key = Rc::from(format!("{}:exponent", &instr.key));
+            ex.key = Arc::from(format!("{}:exponent", &instr.key));
         }
         if mn.key.is_empty() {
-            mn.key = Rc::from(format!("{}:mantissa", &instr.key));
+            mn.key = Arc::from(format!("{}:mantissa", &instr.key));
         }
         instr.operator = op;
         instr.instructions.push(ex);
@@ -398,13 +399,13 @@ impl Instruction {
     pub(crate) fn extract(&self, s: &mut DecoderContext<'_>) -> Result<Option<Value>> {
         match self.operator {
             Operator::None => {
-                self.was_present.set(Some(true));
+                self.was_present.store(1, Ordering::Relaxed);
                 Ok(self.read(s)?)
             }
 
             Operator::Constant => {
                 let present = !self.is_optional() || s.pmap_next_bit_set();
-                self.was_present.set(Some(present));
+                self.was_present.store(if present { 1 } else { 0 }, Ordering::Relaxed);
                 let v = if present {
                     match &self.initial_value {
                         Some(v) => Some(v.clone()),
@@ -418,7 +419,7 @@ impl Instruction {
 
             Operator::Default => {
                 let present = s.pmap_next_bit_set();
-                self.was_present.set(Some(present));
+                self.was_present.store(if present { 1 } else { 0 }, Ordering::Relaxed);
                 if present {
                     match self.read(s) {
                         Ok(v) => Ok(v),
@@ -440,7 +441,7 @@ impl Instruction {
 
             Operator::Copy => {
                 let present = s.pmap_next_bit_set();
-                self.was_present.set(Some(present));
+                self.was_present.store(if present { 1 } else { 0 }, Ordering::Relaxed);
                 if present {
                     let v = self.read(s)?;
                     s.ctx_set(self, v.clone());
@@ -488,7 +489,7 @@ impl Instruction {
 
             Operator::Increment => {
                 let present = s.pmap_next_bit_set();
-                self.was_present.set(Some(present));
+                self.was_present.store(if present { 1 } else { 0 }, Ordering::Relaxed);
                 if present {
                     let v = self.read(s)?;
                     s.ctx_set(self, v.clone());
@@ -539,7 +540,7 @@ impl Instruction {
             }
 
             Operator::Delta => {
-                self.was_present.set(Some(true));
+                self.was_present.store(1, Ordering::Relaxed);
                 let Some(delta) = self.read_delta(s)? else {
                     return Ok(None);
                 };
@@ -572,7 +573,7 @@ impl Instruction {
 
             Operator::Tail => {
                 let present = s.pmap_next_bit_set();
-                self.was_present.set(Some(present));
+                self.was_present.store(if present { 1 } else { 0 }, Ordering::Relaxed);
                 if present {
                     let Some(tail) = self.read_tail(s)? else {
                         // Null tail data: previous state becomes "empty"

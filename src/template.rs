@@ -1,6 +1,6 @@
 //! FAST Template — a sequence of instructions.
 
-use std::cell::Cell;
+use std::sync::atomic::AtomicI8;
 
 use roxmltree::Node;
 
@@ -19,7 +19,7 @@ pub(crate) struct Template {
 
     // This flag indicates if the template requires a presence map in case of statically referenced
     // from another template. If the flag is None, the presence map is not calculated yet.
-    pub(crate) require_pmap: Cell<Option<bool>>,
+    pub(crate) require_pmap: AtomicI8, // -1=None, 0=Some(false), 1=Some(true)
 }
 
 impl Template {
@@ -59,7 +59,7 @@ impl Template {
             type_ref,
             dictionary,
             instructions,
-            require_pmap: Cell::new(None),
+            require_pmap: AtomicI8::new(-1),
         })
     }
 }

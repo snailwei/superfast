@@ -1,6 +1,7 @@
 //! FAST Decoder — decodes binary messages using XML template definitions.
 
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use crate::context::{Context, DictionaryType};
 use crate::definitions::Definitions;
@@ -287,7 +288,7 @@ impl<'a> DecoderContext<'a> {
                 self.model
                     .start_sequence(instruction.id, &instruction.name, length);
                 let mut truncated_bytes = Vec::new();
-                let has_pmap = instruction.has_pmap.get();
+                let has_pmap = instruction.has_pmap.load(Ordering::Relaxed);
                 for idx in 0..length {
                     let item_start = self.rdr.pos();
 
@@ -370,7 +371,7 @@ impl<'a> DecoderContext<'a> {
         let has_type_ref = self.switch_type_ref(&instruction.type_ref);
 
         self.model.start_group(&instruction.name);
-        if instruction.has_pmap.get() {
+        if instruction.has_pmap.load(Ordering::Relaxed) {
             self.decode_segment(&instruction.instructions)?;
         } else {
             self.decode_instructions(&instruction.instructions)?;
@@ -389,7 +390,7 @@ impl<'a> DecoderContext<'a> {
     fn decode_template_ref(&mut self, instruction: &Instruction) -> Result<()> {
         let is_dynamic = instruction.name.is_empty();
 
-        let template: Rc<Template> = if is_dynamic {
+        let template: Arc<Template> = if is_dynamic {
             self.decode_presence_map()?;
             self.decode_template_id()?;
             self.definitions
@@ -497,7 +498,7 @@ impl<'a> DecoderContext<'a> {
             Dictionary::Template => DictionaryType::Template(*self.template_id.must_peek()),
             Dictionary::Type => {
                 let name = match self.type_ref.must_peek() {
-                    TypeRef::Any => Rc::from("__any__"),
+                    TypeRef::Any => Arc::from("__any__"),
                     TypeRef::ApplicationType(name) => name.clone(),
                 };
                 DictionaryType::Type(name)

@@ -4,7 +4,8 @@
 //! writes its value atomically, eliminating stale-state issues.
 
 use serde::Serialize;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use crate::context::{Context, DictionaryType};
 use crate::definitions::Definitions;
@@ -90,7 +91,7 @@ impl FastEncoder {
 
         self.context.set(
             DictionaryType::Global,
-            Rc::from("__template_id__"),
+            Arc::from("__template_id__"),
             Some(Value::UInt32(template.id)),
         );
 
@@ -455,7 +456,7 @@ impl<'a> EncoderContext<'a> {
         self.inject_buf(length_instr, &length_data, seg)?;
 
         for item in seq {
-            if instruction.has_pmap.get() {
+            if instruction.has_pmap.load(Ordering::Relaxed) {
                 self.encode_sequence_item_buf(&instruction.instructions[1..], item, seg)?;
             } else {
                 self.encode_instructions_buf(&instruction.instructions[1..], item, seg)?;
@@ -539,7 +540,7 @@ impl<'a> EncoderContext<'a> {
             seg.pmap.set_next_bit(true);
         }
 
-        if instruction.has_pmap.get() {
+        if instruction.has_pmap.load(Ordering::Relaxed) {
             // Encode group as a sub-segment with its own pmap
             let mut sub_seg = SegmentState::new();
             self.encode_instructions_buf(&instruction.instructions, field_data, &mut sub_seg)?;
@@ -596,7 +597,7 @@ impl<'a> EncoderContext<'a> {
             }
         };
 
-        let template: Rc<Template> = if is_dynamic {
+        let template: Arc<Template> = if is_dynamic {
             // Determine template name from data
             let tpl_name = match data {
                 ValueData::DynamicTemplateRef(t) => t.name.clone(),
@@ -699,7 +700,7 @@ impl<'a> EncoderContext<'a> {
             Dictionary::Template => DictionaryType::Template(self.template_id),
             Dictionary::Type => {
                 let name = match self.type_ref {
-                    TypeRef::Any => Rc::from("__any__"),
+                    TypeRef::Any => Arc::from("__any__"),
                     TypeRef::ApplicationType(ref name) => name.clone(),
                 };
                 DictionaryType::Type(name)
